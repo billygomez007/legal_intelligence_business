@@ -1,4 +1,13 @@
--- Stage 5: operational records are public-corpus ONLY. No tenant key or tenant FK exists.
+-- Stage 5: operational records of public-corpus ingestion.
+--
+-- Scope and ownership (docs/adr/0007-legal-ingestion-boundaries.md):
+--   * PUBLIC corpus only. No tenant key or tenant FK exists here, and `corpus.sources` cannot
+--     describe private material (corpus migration 0003 removed `user_supplied`).
+--   * This migration owns ONLY ingestion tables and functions. It installs no trigger on a
+--     corpus table: corpus invariants (rights in force, passage immutability, the review gate
+--     on approval) live in the corpus migrations. Ingestion consumes them.
+--   * No SECURITY DEFINER function is defined here. Rights are evaluated by
+--     corpus.rights_decision_in_force(); ingestion only says which uses its operation needs.
 CREATE SCHEMA ingestion;
 REVOKE ALL ON SCHEMA ingestion FROM PUBLIC;
 GRANT USAGE ON SCHEMA ingestion TO legalintel_ingest, legalintel_dataops;
@@ -41,7 +50,9 @@ CREATE TABLE ingestion.artifacts (
   storage_key text NOT NULL,
   media_type text NOT NULL CHECK (media_type IN ('text/plain','text/html','application/pdf')),
   byte_size integer NOT NULL CHECK (byte_size BETWEEN 1 AND 4194304),
-  acquired_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  -- Millisecond precision on purpose: the version copies this value through application code, and
+  -- a JavaScript Date cannot carry microseconds. The database verifies the two are equal.
+  acquired_at timestamptz NOT NULL DEFAULT date_trunc('milliseconds', clock_timestamp()),
   input_reference uuid NOT NULL,
   pipeline_version text NOT NULL,
   rights_decision_id uuid NOT NULL REFERENCES corpus.source_rights_decisions(id),
@@ -56,7 +67,10 @@ CREATE TABLE ingestion.extractions (
   artifact_id uuid NOT NULL REFERENCES ingestion.artifacts(id),
   extractor_version text NOT NULL CHECK (length(extractor_version) BETWEEN 1 AND 128),
   text text NOT NULL CHECK (length(text) BETWEEN 20 AND 1000000),
-  text_checksum text GENERATED ALWAYS AS (encode(sha256(convert_to(text,'UTF8')),'hex')) STORED,
+  -- convert_to() is STABLE, so this cannot be a generated column. The database verifies the
+  -- hash instead (the same pattern as corpus.passages.text_sha256).
+  text_checksum text NOT NULL CHECK (text_checksum ~ '^[a-f0-9]{64}$'
+    AND text_checksum = encode(sha256(convert_to(text,'UTF8')),'hex')),
   quality numeric NOT NULL CHECK (quality BETWEEN 0 AND 1),
   warnings text[] NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now()
@@ -110,13 +124,21 @@ CREATE TABLE ingestion.review_tasks (
   candidate_document_ids uuid[] NOT NULL DEFAULT '{}',
   created_at timestamptz NOT NULL DEFAULT now()
 );
+-- The disposition of a review task. Several decisions may exist (a hold, then a final one); the
+-- first approve or reject closes the task. For a task that carries a version, each decision
+-- references the corpus decision that actually moved (or held) the version, so the two records
+-- cannot disagree.
 CREATE TABLE ingestion.review_decisions (
-  task_id uuid PRIMARY KEY REFERENCES ingestion.review_tasks(id),
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  sequence bigint GENERATED ALWAYS AS IDENTITY,
+  task_id uuid NOT NULL REFERENCES ingestion.review_tasks(id),
   decision text NOT NULL CHECK(decision IN ('approve','reject','hold')),
   actor_id uuid NOT NULL REFERENCES iam.users(id),
   reason_code text NOT NULL CHECK(reason_code ~ '^[a-z][a-z0-9_]{0,63}$'),
+  corpus_decision_id uuid UNIQUE REFERENCES corpus.version_review_decisions(id),
   created_at timestamptz NOT NULL DEFAULT now()
 );
+CREATE INDEX review_decisions_task ON ingestion.review_decisions(task_id, sequence);
 CREATE TABLE ingestion.stage_events (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   job_id uuid NOT NULL REFERENCES ingestion.jobs(id),
@@ -128,21 +150,13 @@ CREATE TABLE ingestion.stage_events (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
--- Re-evaluate clock time even within a transaction, unlike the historical stable read gate.
+-- Which rights the `structure` operation needs is an ingestion concern; whether they are in
+-- force is a corpus concern. SECURITY INVOKER on purpose: it adds no privilege.
 CREATE FUNCTION ingestion.current_rights(p_source uuid) RETURNS uuid
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
-DECLARE d corpus.source_rights_decisions; t timestamptz := clock_timestamp();
-BEGIN
-  SELECT * INTO d FROM corpus.source_rights_decisions WHERE source_id=p_source AND effective_from<=t
-    ORDER BY sequence DESC LIMIT 1;
-  IF d.id IS NULL OR d.status <> 'approved' OR (d.expires_at IS NOT NULL AND d.expires_at<=t)
-     OR NOT (ARRAY['acquire_store','derive_metadata']::text[] <@ d.allowed_uses) THEN
-    RAISE EXCEPTION 'processing rights denied' USING HINT='ingestion.rights_denied';
-  END IF;
-  RETURN d.id;
-END $$;
+LANGUAGE sql
+AS $$ SELECT corpus.rights_decision_in_force(p_source, ARRAY['acquire_store', 'derive_metadata']) $$;
 REVOKE ALL ON FUNCTION ingestion.current_rights(uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION ingestion.current_rights(uuid) TO legalintel_ingest,legalintel_dataops;
+GRANT EXECUTE ON FUNCTION ingestion.current_rights(uuid) TO legalintel_ingest, legalintel_dataops;
 
 CREATE FUNCTION ingestion.guard_job() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
@@ -165,7 +179,12 @@ BEGIN
   IF OLD.status IN ('pending_review','needs_review') THEN RAISE EXCEPTION 'job is terminal'; END IF;
   IF OLD.artifact_id IS NOT NULL AND NEW.artifact_id IS DISTINCT FROM OLD.artifact_id THEN RAISE EXCEPTION 'artifact is immutable'; END IF;
   IF OLD.version_id IS NOT NULL AND NEW.version_id IS DISTINCT FROM OLD.version_id THEN RAISE EXCEPTION 'result is immutable'; END IF;
-  IF NEW.status='running' THEN
+  IF NEW.status='failed' AND NEW.failure_category='rights_denied' AND NEW.attempts=OLD.attempts
+     AND (OLD.status='queued' OR (OLD.status='failed' AND OLD.failure_category IN ('storage_failed','acquisition_failed'))) THEN
+    -- Rights were withdrawn before this job (re)started. Without this transition a queued job
+    -- could never leave the queue, and every worker pass would fail on it again.
+    NULL;
+  ELSIF NEW.status='running' THEN
     PERFORM ingestion.current_rights(NEW.source_id);
     IF OLD.status='failed' AND (OLD.failure_category NOT IN ('storage_failed','acquisition_failed') OR OLD.next_attempt_at>clock_timestamp()) THEN
       RAISE EXCEPTION 'job cannot retry';
@@ -174,6 +193,19 @@ BEGIN
     IF NEW.attempts<OLD.attempts OR NEW.attempts>OLD.attempts+1 THEN RAISE EXCEPTION 'invalid attempt'; END IF;
   ELSIF OLD.status<>'running' OR NEW.status NOT IN ('failed','needs_review','pending_review') THEN
     RAISE EXCEPTION 'invalid job transition';
+  END IF;
+  IF NEW.status='pending_review' THEN
+    -- The hand-off gate. It lives on the ingestion job (an ingestion table), not on the corpus
+    -- version: a job cannot claim to have produced a reviewable result unless the evidence is
+    -- complete and the rights still hold.
+    PERFORM ingestion.current_rights(NEW.source_id);
+    IF NOT EXISTS (SELECT 1 FROM corpus.document_versions v WHERE v.id=NEW.version_id AND v.lifecycle_state='pending_review')
+       OR NOT EXISTS (SELECT 1 FROM ingestion.review_tasks t WHERE t.job_id=NEW.id AND t.version_id=NEW.version_id)
+       OR NOT EXISTS (SELECT 1 FROM corpus.passages p WHERE p.version_id=NEW.version_id)
+       OR EXISTS (SELECT 1 FROM corpus.passages p WHERE p.version_id=NEW.version_id
+                    AND NOT EXISTS (SELECT 1 FROM ingestion.passage_evidence pe WHERE pe.passage_id=p.id)) THEN
+      RAISE EXCEPTION 'unvalidated hand-off' USING HINT='ingestion.unvalidated_handoff';
+    END IF;
   END IF;
   IF NEW.artifact_id IS NOT NULL AND NOT EXISTS (
     SELECT 1 FROM ingestion.artifacts a WHERE a.id=NEW.artifact_id AND a.source_id=NEW.source_id AND a.jurisdiction_id=NEW.jurisdiction_id
@@ -202,56 +234,65 @@ GRANT INSERT ON ingestion.jobs,ingestion.artifacts,ingestion.extractions,ingesti
 GRANT UPDATE(status,stage,attempts,artifact_id,version_id,failure_category,failure_summary,next_attempt_at,updated_at) ON ingestion.jobs TO legalintel_ingest;
 GRANT INSERT ON ingestion.review_decisions TO legalintel_dataops;
 
+-- Every ingestion write is validated against the rows it claims to describe. All checks are
+-- written so that a NULL (a missing key in the evidence JSON) is a failure, never a pass:
+-- in PL/pgSQL an IF over NULL is not taken, so each check is phrased as "must be provably true".
 CREATE FUNCTION ingestion.validate_evidence() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE j ingestion.jobs; a ingestion.artifacts; v corpus.document_versions;
-  p corpus.passages; e ingestion.extractions; f jsonb; g graph.citations;
+  p corpus.passages; e ingestion.extractions; f jsonb; g graph.citations; t ingestion.review_tasks;
+  v_source uuid; v_state text;
 BEGIN
   IF TG_TABLE_NAME='artifacts' THEN
-    IF NEW.rights_decision_id<>ingestion.current_rights(NEW.source_id) THEN RAISE EXCEPTION 'stale rights evidence'; END IF;
+    IF NEW.rights_decision_id IS DISTINCT FROM ingestion.current_rights(NEW.source_id) THEN
+      RAISE EXCEPTION 'stale rights evidence' USING HINT='ingestion.stale_rights_evidence'; END IF;
   ELSIF TG_TABLE_NAME='extractions' THEN
     SELECT * INTO j FROM ingestion.jobs WHERE id=NEW.job_id;
     PERFORM ingestion.current_rights(j.source_id);
-    IF j.status<>'running' OR j.artifact_id IS DISTINCT FROM NEW.artifact_id THEN RAISE EXCEPTION 'extraction scope mismatch'; END IF;
+    IF j.status IS DISTINCT FROM 'running' OR j.artifact_id IS DISTINCT FROM NEW.artifact_id THEN
+      RAISE EXCEPTION 'extraction scope mismatch'; END IF;
   ELSIF TG_TABLE_NAME='version_evidence' THEN
     SELECT * INTO j FROM ingestion.jobs WHERE id=NEW.job_id;
     SELECT * INTO a FROM ingestion.artifacts WHERE id=NEW.artifact_id;
     SELECT * INTO v FROM corpus.document_versions WHERE id=NEW.version_id;
     SELECT * INTO e FROM ingestion.extractions WHERE job_id=NEW.job_id;
     PERFORM ingestion.current_rights(j.source_id);
-    IF j.status<>'running' OR v.lifecycle_state<>'ingesting' OR j.artifact_id IS DISTINCT FROM a.id OR e.artifact_id IS DISTINCT FROM a.id
-       OR v.source_id IS DISTINCT FROM a.source_id OR v.jurisdiction_id IS DISTINCT FROM a.jurisdiction_id
-       OR encode(v.content_checksum,'hex') IS DISTINCT FROM a.checksum OR v.storage_key IS DISTINCT FROM a.storage_key
-       OR v.acquired_at IS DISTINCT FROM a.acquired_at OR v.pipeline_version IS DISTINCT FROM j.pipeline_version THEN
-      RAISE EXCEPTION 'version provenance mismatch';
-    END IF;
+    IF NOT COALESCE(j.status='running' AND v.lifecycle_state='ingesting' AND j.artifact_id=a.id AND e.artifact_id=a.id
+       AND v.source_id=a.source_id AND v.jurisdiction_id=a.jurisdiction_id
+       AND encode(v.content_checksum,'hex')=a.checksum AND v.storage_key=a.storage_key
+       AND v.acquired_at=a.acquired_at AND v.pipeline_version=j.pipeline_version, false) THEN
+      RAISE EXCEPTION 'version provenance mismatch'; END IF;
     IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(NEW.fields) x WHERE x->>'field'='title' AND length(x->>'value')>0) THEN
       RAISE EXCEPTION 'missing title evidence'; END IF;
     FOR f IN SELECT value FROM jsonb_array_elements(NEW.fields) LOOP
-      IF f->>'origin' NOT IN ('parser','deterministic','machine') OR f->>'reviewState' IS DISTINCT FROM 'unreviewed'
-        OR f->>'value' IS DISTINCT FROM f->>'quote' OR (f->>'confidence')::numeric NOT BETWEEN 0 AND 1
-        OR (f->>'start')::integer<0 OR (f->>'end')::integer<=(f->>'start')::integer
-        OR substring(e.text FROM (f->>'start')::integer+1 FOR (f->>'end')::integer-(f->>'start')::integer) IS DISTINCT FROM f->>'quote' THEN
+      -- Machine output is never verified: the only review state accepted here is 'unreviewed'.
+      IF NOT COALESCE(f->>'origin' IN ('parser','deterministic','machine')
+        AND f->>'reviewState'='unreviewed'
+        AND f->>'value'=f->>'quote'
+        AND (f->>'confidence')::numeric BETWEEN 0 AND 1
+        AND (f->>'start')::integer>=0 AND (f->>'end')::integer>(f->>'start')::integer
+        AND substring(e.text FROM (f->>'start')::integer+1 FOR (f->>'end')::integer-(f->>'start')::integer)=f->>'quote', false) THEN
         RAISE EXCEPTION 'invalid metadata evidence'; END IF;
     END LOOP;
     FOR f IN SELECT value FROM jsonb_array_elements(NEW.concepts) LOOP
-      IF (f->>'start')::integer<0 OR (f->>'end')::integer<=(f->>'start')::integer OR
-        substring(e.text FROM (f->>'start')::integer+1 FOR (f->>'end')::integer-(f->>'start')::integer) IS DISTINCT FROM f->>'quote' THEN
+      IF NOT COALESCE((f->>'start')::integer>=0 AND (f->>'end')::integer>(f->>'start')::integer
+        AND substring(e.text FROM (f->>'start')::integer+1 FOR (f->>'end')::integer-(f->>'start')::integer)=f->>'quote', false) THEN
         RAISE EXCEPTION 'invalid concept evidence'; END IF;
     END LOOP;
   ELSIF TG_TABLE_NAME='passage_evidence' THEN
     SELECT * INTO p FROM corpus.passages WHERE id=NEW.passage_id;
     SELECT x.* INTO e FROM ingestion.extractions x JOIN ingestion.version_evidence ve ON ve.job_id=x.job_id WHERE ve.version_id=NEW.version_id;
-    IF substring(e.text FROM NEW.start_offset+1 FOR NEW.end_offset-NEW.start_offset) IS DISTINCT FROM p.text THEN
+    IF NOT COALESCE(substring(e.text FROM NEW.start_offset+1 FOR NEW.end_offset-NEW.start_offset)=p.text, false) THEN
       RAISE EXCEPTION 'passage extraction mismatch'; END IF;
   ELSIF TG_TABLE_NAME='citation_candidates' THEN
     SELECT * INTO p FROM corpus.passages WHERE id=NEW.passage_id;
-    IF NEW.identifier<>NEW.quote OR substring(p.text FROM NEW.start_offset+1 FOR NEW.end_offset-NEW.start_offset) IS DISTINCT FROM NEW.quote THEN
+    IF NOT COALESCE(NEW.identifier=NEW.quote
+       AND substring(p.text FROM NEW.start_offset+1 FOR NEW.end_offset-NEW.start_offset)=NEW.quote, false) THEN
       RAISE EXCEPTION 'citation evidence mismatch'; END IF;
     IF NEW.graph_citation_id IS NOT NULL THEN
       SELECT * INTO g FROM graph.citations WHERE id=NEW.graph_citation_id;
-      IF g.from_version_id IS DISTINCT FROM NEW.version_id OR g.evidence_passage_id IS DISTINCT FROM NEW.passage_id
-        OR g.to_document_id IS DISTINCT FROM NEW.target_document_id OR g.citation_text IS DISTINCT FROM NEW.quote
-        OR g.origin IS DISTINCT FROM 'machine' OR g.relationship_type IS DISTINCT FROM 'cites' OR g.review_status IS DISTINCT FROM 'unreviewed' THEN
+      IF NOT COALESCE(g.from_version_id=NEW.version_id AND g.evidence_passage_id=NEW.passage_id
+        AND g.to_document_id=NEW.target_document_id AND g.citation_text=NEW.quote
+        AND g.origin='machine' AND g.relationship_type='cites' AND g.review_status='unreviewed', false) THEN
         RAISE EXCEPTION 'citation graph mismatch'; END IF;
     END IF;
   ELSIF TG_TABLE_NAME='identities' THEN
@@ -260,80 +301,41 @@ BEGIN
       RAISE EXCEPTION 'identity jurisdiction mismatch'; END IF;
   ELSIF TG_TABLE_NAME='review_tasks' THEN
     SELECT * INTO j FROM ingestion.jobs WHERE id=NEW.job_id;
-    IF j.status<>'running' THEN RAISE EXCEPTION 'review requires active job'; END IF;
+    IF j.status IS DISTINCT FROM 'running' THEN RAISE EXCEPTION 'review requires active job'; END IF;
     IF NEW.version_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM ingestion.version_evidence ve WHERE ve.version_id=NEW.version_id AND ve.job_id=j.id) THEN
       RAISE EXCEPTION 'review scope mismatch'; END IF;
+  ELSIF TG_TABLE_NAME='review_decisions' THEN
+    SELECT * INTO t FROM ingestion.review_tasks WHERE id=NEW.task_id;
+    IF EXISTS(SELECT 1 FROM ingestion.review_decisions d WHERE d.task_id=NEW.task_id AND d.decision IN ('approve','reject')) THEN
+      RAISE EXCEPTION 'review task already decided' USING HINT='ingestion.task_decided'; END IF;
+    IF t.version_id IS NULL THEN
+      -- A failure or a duplicate has no version to approve: a person may reject it (close it as
+      -- not proceeding) or hold it, never approve it.
+      IF NEW.decision='approve' OR NEW.corpus_decision_id IS NOT NULL THEN
+        RAISE EXCEPTION 'cannot approve an unresolved failure or duplicate' USING HINT='ingestion.cannot_approve'; END IF;
+    ELSE
+      SELECT source_id, lifecycle_state INTO v_source, v_state FROM corpus.document_versions WHERE id=t.version_id;
+      IF NOT EXISTS(SELECT 1 FROM corpus.version_review_decisions c
+                     WHERE c.id=NEW.corpus_decision_id AND c.version_id=t.version_id
+                       AND c.decision=NEW.decision AND c.decided_by=NEW.actor_id) THEN
+        RAISE EXCEPTION 'the decision must first be recorded in the corpus' USING HINT='ingestion.corpus_decision_required'; END IF;
+      IF NEW.decision='approve' THEN
+        -- Approval re-checks the rights. Rejecting or holding never does: refusing stays possible
+        -- after a revocation.
+        PERFORM ingestion.current_rights(v_source);
+        IF v_state IS DISTINCT FROM 'approved' THEN RAISE EXCEPTION 'version state does not match the decision'; END IF;
+      ELSIF NEW.decision='reject' THEN
+        IF v_state IS DISTINCT FROM 'rejected' THEN RAISE EXCEPTION 'version state does not match the decision'; END IF;
+      ELSIF v_state IS DISTINCT FROM 'pending_review' THEN
+        RAISE EXCEPTION 'version state does not match the decision';
+      END IF;
+    END IF;
   END IF;
   RETURN NEW;
 END $$;
 DO $$ DECLARE t text; BEGIN
-  FOREACH t IN ARRAY ARRAY['artifacts','extractions','version_evidence','passage_evidence','citation_candidates','identities','review_tasks'] LOOP
+  FOREACH t IN ARRAY ARRAY['artifacts','extractions','version_evidence','passage_evidence','citation_candidates',
+    'identities','review_tasks','review_decisions'] LOOP
     EXECUTE format('CREATE TRIGGER validate BEFORE INSERT ON ingestion.%I FOR EACH ROW EXECUTE FUNCTION ingestion.validate_evidence()',t);
   END LOOP;
 END $$;
-
--- Once evidence exists, its exact passages cannot be moved/rewritten, even while ingesting.
-CREATE FUNCTION ingestion.freeze_evidenced_passage() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
-SET search_path=pg_catalog,public AS $$
-BEGIN
-  IF EXISTS(SELECT 1 FROM ingestion.passage_evidence WHERE passage_id=OLD.id) THEN RAISE EXCEPTION 'evidenced passage is immutable'; END IF;
-  IF TG_OP='DELETE' THEN RETURN OLD; END IF;
-  RETURN NEW;
-END $$;
-REVOKE ALL ON FUNCTION ingestion.freeze_evidenced_passage() FROM PUBLIC;
-CREATE TRIGGER ingestion_passage_freeze BEFORE UPDATE OR DELETE ON corpus.passages
-  FOR EACH ROW EXECUTE FUNCTION ingestion.freeze_evidenced_passage();
-
-CREATE FUNCTION ingestion.guard_handoff() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
-SET search_path=pg_catalog,public AS $$
-DECLARE e ingestion.version_evidence;
-BEGIN
-  IF NEW.pipeline_version NOT LIKE 'ingestion/%' THEN RETURN NEW; END IF;
-  SELECT * INTO e FROM ingestion.version_evidence WHERE version_id=NEW.id;
-  IF NEW.lifecycle_state='pending_review' THEN
-    PERFORM ingestion.current_rights(NEW.source_id);
-    IF e.version_id IS NULL OR NOT EXISTS(SELECT 1 FROM ingestion.review_tasks WHERE version_id=NEW.id)
-      OR NOT EXISTS(SELECT 1 FROM corpus.passages WHERE version_id=NEW.id)
-      OR EXISTS(SELECT 1 FROM corpus.passages p WHERE p.version_id=NEW.id AND NOT EXISTS(SELECT 1 FROM ingestion.passage_evidence pe WHERE pe.passage_id=p.id)) THEN
-      RAISE EXCEPTION 'unvalidated handoff'; END IF;
-  ELSIF NEW.lifecycle_state='approved' THEN
-    IF NOT EXISTS(SELECT 1 FROM ingestion.review_tasks t JOIN ingestion.review_decisions d ON d.task_id=t.id
-      WHERE t.version_id=NEW.id AND d.decision='approve' AND d.actor_id=NEW.approved_by) THEN
-      RAISE EXCEPTION 'human review decision required'; END IF;
-  END IF;
-  RETURN NEW;
-END $$;
-REVOKE ALL ON FUNCTION ingestion.guard_handoff() FROM PUBLIC;
-CREATE TRIGGER ingestion_handoff BEFORE UPDATE ON corpus.document_versions FOR EACH ROW EXECUTE FUNCTION ingestion.guard_handoff();
-
-CREATE FUNCTION ingestion.decide_review() RETURNS trigger LANGUAGE plpgsql AS $$
-DECLARE t ingestion.review_tasks;
-BEGIN
-  SELECT * INTO t FROM ingestion.review_tasks WHERE id=NEW.task_id;
-  IF t.version_id IS NULL AND NEW.decision='approve' THEN RAISE EXCEPTION 'cannot approve unresolved failure or duplicate'; END IF;
-  IF t.version_id IS NOT NULL AND NEW.decision IN ('approve','reject') THEN
-    PERFORM ingestion.current_rights((SELECT source_id FROM corpus.document_versions WHERE id=t.version_id));
-    UPDATE corpus.document_versions SET lifecycle_state=CASE WHEN NEW.decision='approve' THEN 'approved' ELSE 'rejected' END,
-      approved_by=CASE WHEN NEW.decision='approve' THEN NEW.actor_id ELSE approved_by END WHERE id=t.version_id;
-    IF NOT FOUND THEN RAISE EXCEPTION 'review version unavailable'; END IF;
-  END IF;
-  INSERT INTO audit.platform_events(actor_kind,actor_id,action,outcome,resource_type,resource_id,metadata)
-    VALUES('user',NEW.actor_id::text,'ingestion.review_decided','success','review_task',NEW.task_id::text,
-      jsonb_build_object('decision',NEW.decision,'reasonCode',NEW.reason_code));
-  RETURN NEW;
-END $$;
-CREATE TRIGGER review_apply AFTER INSERT ON ingestion.review_decisions FOR EACH ROW EXECUTE FUNCTION ingestion.decide_review();
-
-CREATE FUNCTION ingestion.audit_lifecycle() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
-BEGIN
-  IF NEW.pipeline_version LIKE 'ingestion/%' AND NEW.lifecycle_state IS DISTINCT FROM OLD.lifecycle_state THEN
-    INSERT INTO audit.platform_events(actor_kind,actor_id,action,outcome,resource_type,resource_id,metadata)
-      VALUES(CASE WHEN NEW.lifecycle_state IN ('approved','published') THEN 'user' ELSE 'system' END,
-        CASE WHEN NEW.lifecycle_state='approved' THEN NEW.approved_by::text WHEN NEW.lifecycle_state='published' THEN NEW.published_by::text ELSE NULL END,
-        'corpus.'||NEW.lifecycle_state,'success','document_version',NEW.id::text,
-        jsonb_build_object('previousState',OLD.lifecycle_state));
-  END IF;
-  RETURN NEW;
-END $$;
-REVOKE ALL ON FUNCTION ingestion.audit_lifecycle() FROM PUBLIC;
-CREATE TRIGGER ingestion_lifecycle_audit AFTER UPDATE ON corpus.document_versions FOR EACH ROW EXECUTE FUNCTION ingestion.audit_lifecycle();

@@ -9,4 +9,5 @@ export * from './adapters/local-storage';
 export * from './adapters/pg-store';
 export * from './adapters/factory';
 export * from './adapters/review';
+export * from './adapters/rights';
 export * from './migrations';

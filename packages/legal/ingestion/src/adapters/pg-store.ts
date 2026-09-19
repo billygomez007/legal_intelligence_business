@@ -9,21 +9,25 @@ import {
   VersionId,
 } from '@legalintel/legal-corpus';
 import {
+  failureCategory,
   FAILURES,
   IngestionFailure,
   MAX_ATTEMPTS,
   PIPELINE_VERSION,
   type Artifact,
+  type ArtifactTimings,
   type Extraction,
   type FailureCategory,
   type IngestionRequest,
   type Job,
   type ParsedDocument,
   type Stage,
+  type SubmitTimings,
 } from '../domain/model';
 import { validateParsed } from '../domain/parser';
 import type { IngestionStore } from '../ports/store';
 import { hash } from './local-storage';
+import { currentRights, LOCK_NAMESPACE } from './rights';
 
 interface JobRow {
   id: string;
@@ -68,18 +72,6 @@ const mapArtifact = (r: ArtifactRow): Artifact => ({
   acquiredAt: r.acquired_at,
 });
 
-async function rights(tx: Tx, sourceId: string): Promise<string> {
-  try {
-    const r = await tx.query<{ id: string }>('SELECT ingestion.current_rights($1) AS id', [
-      sourceId,
-    ]);
-    const id = r.rows[0]?.id;
-    if (id === undefined) throw new IngestionFailure('rights_denied');
-    return id;
-  } catch {
-    throw new IngestionFailure('rights_denied');
-  }
-}
 async function event(
   tx: Tx,
   job: Job,
@@ -87,6 +79,7 @@ async function event(
   durationMs: number,
   outcome: 'success' | 'error',
   decisionId: string | null,
+  failure?: FailureCategory,
 ): Promise<void> {
   await tx.query(
     `INSERT INTO ingestion.stage_events(job_id,stage,attempt,duration_ms,outcome,rights_decision_id) VALUES($1,$2,$3,$4,$5,$6)`,
@@ -95,7 +88,7 @@ async function event(
   await recordPlatformAuditEvent(tx, {
     actorKind: 'system',
     action: `ingestion.${outcome === 'error' ? 'processing_failed' : stage + '_completed'}`,
-    outcome,
+    outcome: failure === 'rights_denied' ? 'denied' : outcome,
     resourceType: 'ingestion_job',
     resourceId: job.id,
     requestId: job.request.correlationId,
@@ -104,6 +97,7 @@ async function event(
       attempt: job.attempts,
       durationMs: Math.max(0, Math.round(durationMs)),
       pipelineVersion: job.pipelineVersion,
+      ...(failure === undefined ? {} : { category: failure }),
     },
   });
 }
@@ -116,8 +110,35 @@ export class PgIngestionStore implements IngestionStore {
     return mapJob(r.rows[0]);
   }
   async request(input: IngestionRequest): Promise<Job> {
+    try {
+      return await this.insertRequest(input);
+    } catch (error) {
+      if (failureCategory(error) === 'rights_denied') await this.auditDeniedRequest(input);
+      throw error;
+    }
+  }
+  /** The refused attempt is recorded, by id only, so a probe against a source leaves a trace. */
+  private async auditDeniedRequest(input: IngestionRequest): Promise<void> {
+    try {
+      await withPublicTransaction(this.pool, (tx) =>
+        recordPlatformAuditEvent(tx, {
+          actorKind: 'user',
+          actorId: input.actorId,
+          action: 'ingestion.request_denied',
+          outcome: 'denied',
+          resourceType: 'source',
+          resourceId: input.sourceId,
+          requestId: input.correlationId,
+          metadata: { category: 'rights_denied' },
+        }),
+      );
+    } catch {
+      // Recording the refusal must not turn it into a different error.
+    }
+  }
+  private async insertRequest(input: IngestionRequest): Promise<Job> {
     return withPublicTransaction(this.pool, async (tx) => {
-      await rights(tx, input.sourceId);
+      await currentRights(tx, input.sourceId);
       // Correlation identifies the first request, not content identity; retries may use a new trace.
       const digest = hash(JSON.stringify({ ...input, correlationId: undefined }));
       const inserted = await tx.query<JobRow>(
@@ -153,8 +174,8 @@ export class PgIngestionStore implements IngestionStore {
         [input.sourceId, input.idempotencyKey],
       );
       const row = prior.rows[0];
-      if (row === undefined || row.request_checksum !== digest)
-        throw new IngestionFailure('input_invalid');
+      // The same key with different content is a caller error, never a silent reuse.
+      if (row?.request_checksum !== digest) throw new IngestionFailure('input_invalid');
       return mapJob(row);
     });
   }
@@ -162,8 +183,12 @@ export class PgIngestionStore implements IngestionStore {
     if (!Number.isInteger(limit) || limit < 1 || limit > 100)
       throw new IngestionFailure('input_invalid');
     const r = await this.pool.query<{ id: string }>(
-      `SELECT id FROM ingestion.jobs WHERE attempts<$1 AND next_attempt_at<=clock_timestamp()
-      AND (status IN ('queued','running') OR (status='failed' AND failure_category IN ('storage_failed','acquisition_failed')))
+      `SELECT id FROM ingestion.jobs
+      WHERE (attempts<$1 AND next_attempt_at<=clock_timestamp()
+        AND (status IN ('queued','running') OR (status='failed' AND failure_category IN ('storage_failed','acquisition_failed'))))
+        -- A worker that died on the last allowed attempt leaves the job 'running' for good;
+        -- surface it so claim() can close it out visibly instead of leaving it stuck.
+        OR (status='running' AND attempts>=$1)
       ORDER BY created_at LIMIT $2`,
       [MAX_ATTEMPTS, limit],
     );
@@ -174,15 +199,18 @@ export class PgIngestionStore implements IngestionStore {
     let destroy = false;
     try {
       const r = await client.query<{ locked: boolean }>(
-        'SELECT pg_try_advisory_lock(hashtextextended($1,5)) AS locked',
-        [id],
+        'SELECT pg_try_advisory_lock(hashtextextended($1,$2)) AS locked',
+        [id, LOCK_NAMESPACE.job],
       );
       if (r.rows[0]?.locked !== true) return null;
       try {
         return await work();
       } finally {
         try {
-          await client.query('SELECT pg_advisory_unlock(hashtextextended($1,5))', [id]);
+          await client.query('SELECT pg_advisory_unlock(hashtextextended($1,$2))', [
+            id,
+            LOCK_NAMESPACE.job,
+          ]);
         } catch {
           destroy = true;
         }
@@ -192,6 +220,24 @@ export class PgIngestionStore implements IngestionStore {
     }
   }
   async claim(id: string): Promise<Job | null> {
+    try {
+      const outcome = await this.tryClaim(id);
+      if (outcome === 'abandoned') {
+        // A worker died on the last allowed attempt. We hold the job's lock, so nobody is
+        // running it: close it out visibly rather than leave it 'running' forever.
+        await this.closeJob(id, 'internal_error');
+        return null;
+      }
+      return outcome;
+    } catch (error) {
+      if (failureCategory(error) !== 'rights_denied') throw error;
+      // Rights were withdrawn before work began. Without recording it the job would stay
+      // queued and be retried, and refused, on every pass forever.
+      await this.closeJob(id, 'rights_denied');
+      return null;
+    }
+  }
+  private async tryClaim(id: string): Promise<Job | 'abandoned' | null> {
     return withPublicTransaction(this.pool, async (tx) => {
       const result = await tx.query<JobRow>(`SELECT * FROM ingestion.jobs WHERE id=$1 FOR UPDATE`, [
         id,
@@ -207,8 +253,8 @@ export class PgIngestionStore implements IngestionStore {
         return null;
       if (row.pipeline_version !== PIPELINE_VERSION)
         throw new IngestionFailure('validation_failed');
-      if (row.attempts >= MAX_ATTEMPTS) return null;
-      await rights(tx, row.request.sourceId);
+      if (row.attempts >= MAX_ATTEMPTS) return row.status === 'running' ? 'abandoned' : null;
+      await currentRights(tx, row.request.sourceId);
       const r = await tx.query<JobRow>(
         `UPDATE ingestion.jobs SET status='running',attempts=attempts+1,failure_category=NULL,failure_summary=NULL
         WHERE id=$1 AND next_attempt_at<=clock_timestamp() RETURNING *`,
@@ -217,9 +263,32 @@ export class PgIngestionStore implements IngestionStore {
       return r.rows[0] === undefined ? null : mapJob(r.rows[0]);
     });
   }
+  /**
+   * Ends a job that will not run: rights withdrawn before it started, or a worker that died on
+   * the last allowed attempt. Only a job still eligible to run can be closed this way.
+   */
+  private async closeJob(id: string, category: 'rights_denied' | 'internal_error'): Promise<void> {
+    await withPublicTransaction(this.pool, async (tx) => {
+      const r = await tx.query<JobRow>('SELECT * FROM ingestion.jobs WHERE id=$1 FOR UPDATE', [id]);
+      const row = r.rows[0];
+      if (row === undefined) return;
+      const eligible =
+        row.status === 'queued' ||
+        row.status === 'running' ||
+        (row.status === 'failed' &&
+          row.failure_category !== null &&
+          FAILURES[row.failure_category] === 'retryable');
+      if (!eligible) return;
+      await tx.query(
+        `UPDATE ingestion.jobs SET status='failed',failure_category=$2,failure_summary=$3 WHERE id=$1`,
+        [id, category, `Ingestion stopped: ${category}.`],
+      );
+      await event(tx, mapJob(row), row.stage, 0, 'error', null, category);
+    });
+  }
   async stage(job: Job, stage: Stage): Promise<void> {
     await withPublicTransaction(this.pool, async (tx) => {
-      await rights(tx, job.request.sourceId);
+      await currentRights(tx, job.request.sourceId);
       await tx.query('UPDATE ingestion.jobs SET stage=$2 WHERE id=$1', [job.id, stage]);
     });
     job.stage = stage;
@@ -235,10 +304,10 @@ export class PgIngestionStore implements IngestionStore {
     job: Job,
     key: string,
     byteSize: number,
-    durationMs: number,
+    timings: ArtifactTimings,
   ): Promise<Artifact> {
     return withPublicTransaction(this.pool, async (tx) => {
-      const decision = await rights(tx, job.request.sourceId);
+      const decision = await currentRights(tx, job.request.sourceId);
       await tx.query(
         `INSERT INTO ingestion.artifacts(source_id,jurisdiction_id,checksum,storage_key,media_type,byte_size,input_reference,pipeline_version,rights_decision_id)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(source_id,checksum) DO NOTHING`,
@@ -259,18 +328,14 @@ export class PgIngestionStore implements IngestionStore {
         [job.request.sourceId, job.request.expectedChecksum],
       );
       const row = r.rows[0];
-      if (
-        row === undefined ||
-        row.byte_size !== byteSize ||
-        row.media_type !== job.request.mediaType
-      )
+      if (row?.byte_size !== byteSize || row.media_type !== job.request.mediaType)
         throw new IngestionFailure('integrity_failed');
       await tx.query(`UPDATE ingestion.jobs SET artifact_id=$2,stage='storage' WHERE id=$1`, [
         job.id,
         row.id,
       ]);
-      await event(tx, job, 'acquisition', durationMs, 'success', decision);
-      await event(tx, job, 'storage', durationMs, 'success', decision);
+      await event(tx, job, 'acquisition', timings.acquisitionMs, 'success', decision);
+      await event(tx, job, 'storage', timings.storageMs, 'success', decision);
       return mapArtifact(row);
     });
   }
@@ -298,14 +363,15 @@ export class PgIngestionStore implements IngestionStore {
     durationMs: number,
   ): Promise<void> {
     await withPublicTransaction(this.pool, async (tx) => {
-      const decision = await rights(tx, job.request.sourceId);
+      const decision = await currentRights(tx, job.request.sourceId);
       await tx.query(
-        `INSERT INTO ingestion.extractions(job_id,artifact_id,extractor_version,text,quality,warnings) VALUES($1,$2,$3,$4,$5,$6)`,
+        `INSERT INTO ingestion.extractions(job_id,artifact_id,extractor_version,text,text_checksum,quality,warnings) VALUES($1,$2,$3,$4,$5,$6,$7)`,
         [
           job.id,
           artifact.id,
           extraction.extractorVersion,
           extraction.text,
+          hash(extraction.text),
           extraction.quality,
           extraction.warnings,
         ],
@@ -318,15 +384,17 @@ export class PgIngestionStore implements IngestionStore {
     artifact: Artifact,
     extraction: Extraction,
     parsed: ParsedDocument,
-    durationMs: number,
+    timings: SubmitTimings,
   ): Promise<void> {
     validateParsed(extraction.text, parsed);
+    const reviewStarted = performance.now();
     await withPublicTransaction(this.pool, async (tx) => {
-      const decision = await rights(tx, job.request.sourceId);
+      const decision = await currentRights(tx, job.request.sourceId);
       // Serialize identity decisions per jurisdiction/type. This is one bounded transaction,
       // never an external IO lock; no corpus-wide scan or in-memory corpus is required.
-      await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,6))', [
+      await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,$2))', [
         `${job.request.jurisdictionId}:${job.request.documentType}`,
+        LOCK_NAMESPACE.identity,
       ]);
       const identifier = parsed.fields.find((f) => f.field === 'identifier')?.value;
       const title = parsed.fields.find((f) => f.field === 'title')?.value;
@@ -345,7 +413,7 @@ export class PgIngestionStore implements IngestionStore {
         `SELECT DISTINCT d.id FROM corpus.legal_documents d
         LEFT JOIN corpus.document_versions v ON v.document_id=d.id LEFT JOIN ingestion.identities i ON i.document_id=d.id
         WHERE d.jurisdiction_id=$1 AND d.document_type=$2 AND
-        (v.content_checksum=decode($3,'hex') OR ($4::text IS NOT NULL AND i.identifier=$4 AND i.source_id<>$5)
+        ((v.content_checksum=decode($3,'hex') AND v.lifecycle_state<>'rejected') OR ($4::text IS NOT NULL AND i.identifier=$4 AND i.source_id<>$5)
           OR (lower(regexp_replace(d.title,'\\s+',' ','g'))=lower(regexp_replace($6,'\\s+',' ','g')) AND d.id IS DISTINCT FROM $7::uuid)) LIMIT 21`,
         [
           job.request.jurisdictionId,
@@ -366,7 +434,7 @@ export class PgIngestionStore implements IngestionStore {
           `UPDATE ingestion.jobs SET status='needs_review',stage='review',failure_category='duplicate_detected',failure_summary='Ingestion stopped: duplicate_detected.' WHERE id=$1`,
           [job.id],
         );
-        await event(tx, job, 'review', durationMs, 'success', decision);
+        await event(tx, job, 'review', performance.now() - reviewStarted, 'success', decision);
         return;
       }
       documentId ??= await corpusStore.createDocument(tx, {
@@ -429,6 +497,10 @@ export class PgIngestionStore implements IngestionStore {
           [versionId, JSON.stringify(evidence)],
         );
       }
+      // One graph edge per authority per passage (the corpus enforces it). A repeated mention
+      // of the same authority shares that edge; a different spelling of it stays an unlinked
+      // candidate rather than being merged by guesswork.
+      const linked = new Map<string, { graphId: string; quote: string }>();
       for (const c of parsed.citations) {
         const passageId = passageIds.get(c.passageOrdinal);
         if (passageId === undefined) throw new IngestionFailure('validation_failed');
@@ -436,19 +508,29 @@ export class PgIngestionStore implements IngestionStore {
           `SELECT document_id FROM ingestion.identities WHERE source_id=$1 AND identifier=$2`,
           [job.request.sourceId, c.identifier],
         );
-        const targetId = target.rows.length === 1 ? target.rows[0]?.document_id : undefined;
-        const graphId =
-          targetId === undefined
-            ? null
-            : await corpusStore.addCitation(tx, {
-                fromVersionId: versionId,
-                toDocumentId: DocumentId.parse(targetId),
-                relationshipType: 'cites',
-                citationText: c.quote,
-                evidencePassageId: PassageId.parse(passageId),
-                origin: 'machine',
-                confidence: c.confidence,
-              });
+        // Resolved only within this source, only when unambiguous, and never to the document
+        // itself. Anything else stays an unresolved candidate for a person to look at.
+        const only = target.rows.length === 1 ? target.rows[0]?.document_id : undefined;
+        const targetId = only === documentId ? undefined : only;
+        let graphId: string | null = null;
+        if (targetId !== undefined) {
+          const key = `${c.passageOrdinal}:${targetId}`;
+          const existing = linked.get(key);
+          if (existing === undefined) {
+            graphId = await corpusStore.addCitation(tx, {
+              fromVersionId: versionId,
+              toDocumentId: DocumentId.parse(targetId),
+              relationshipType: 'cites',
+              citationText: c.quote,
+              evidencePassageId: PassageId.parse(passageId),
+              origin: 'machine',
+              confidence: c.confidence,
+            });
+            linked.set(key, { graphId, quote: c.quote });
+          } else if (existing.quote === c.quote) {
+            graphId = existing.graphId;
+          }
+        }
         await tx.query(
           `INSERT INTO ingestion.citation_candidates(version_id,passage_id,identifier,quote,start_offset,end_offset,confidence,target_document_id,graph_citation_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
           [
@@ -459,13 +541,13 @@ export class PgIngestionStore implements IngestionStore {
             c.start,
             c.end,
             c.confidence,
-            targetId ?? null,
+            graphId === null ? null : (targetId ?? null),
             graphId,
           ],
         );
       }
-      await event(tx, job, 'parsing', durationMs, 'success', decision);
-      await event(tx, job, 'validation', durationMs, 'success', decision);
+      await event(tx, job, 'parsing', timings.parsingMs, 'success', decision);
+      await event(tx, job, 'validation', timings.validationMs, 'success', decision);
       await tx.query(
         `INSERT INTO ingestion.review_tasks(job_id,version_id,reason) VALUES($1,$2,'validation_complete')`,
         [job.id, versionId],
@@ -475,7 +557,7 @@ export class PgIngestionStore implements IngestionStore {
         `UPDATE ingestion.jobs SET version_id=$2,status='pending_review',stage='review' WHERE id=$1`,
         [job.id, versionId],
       );
-      await event(tx, job, 'review', durationMs, 'success', decision);
+      await event(tx, job, 'review', performance.now() - reviewStarted, 'success', decision);
     });
   }
   async fail(job: Job, category: FailureCategory, durationMs: number): Promise<void> {
@@ -490,7 +572,7 @@ export class PgIngestionStore implements IngestionStore {
         `UPDATE ingestion.jobs SET status=$2,failure_category=$3,failure_summary=$4,next_attempt_at=clock_timestamp()+make_interval(secs=>attempts*5) WHERE id=$1`,
         [job.id, status, category, `Ingestion stopped: ${category}.`],
       );
-      await event(tx, job, job.stage, durationMs, 'error', null);
+      await event(tx, job, job.stage, durationMs, 'error', null, category);
     });
   }
 }

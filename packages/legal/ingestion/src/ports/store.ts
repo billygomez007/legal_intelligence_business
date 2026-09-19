@@ -1,11 +1,13 @@
 import type {
   Artifact,
+  ArtifactTimings,
   Extraction,
   FailureCategory,
   IngestionRequest,
   Job,
   ParsedDocument,
   Stage,
+  SubmitTimings,
 } from '../domain/model';
 import type { JobQueue } from './pipeline';
 export interface IngestionStore extends JobQueue {
@@ -15,7 +17,12 @@ export interface IngestionStore extends JobQueue {
   claim(id: string): Promise<Job | null>;
   stage(job: Job, stage: Stage): Promise<void>;
   artifact(job: Job): Promise<Artifact | null>;
-  saveArtifact(job: Job, key: string, byteSize: number, durationMs: number): Promise<Artifact>;
+  saveArtifact(
+    job: Job,
+    key: string,
+    byteSize: number,
+    timings: ArtifactTimings,
+  ): Promise<Artifact>;
   extraction(job: Job): Promise<Extraction | null>;
   saveExtraction(
     job: Job,
@@ -28,7 +35,7 @@ export interface IngestionStore extends JobQueue {
     artifact: Artifact,
     extraction: Extraction,
     parsed: ParsedDocument,
-    durationMs: number,
+    timings: SubmitTimings,
   ): Promise<void>;
   fail(job: Job, category: FailureCategory, durationMs: number): Promise<void>;
 }
