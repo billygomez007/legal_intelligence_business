@@ -17,7 +17,10 @@
 # AI grounding and citation verification
 /packages/legal/research/             @billygomez007
 
-# Decisions, architecture rules and CI
+# Decisions, architecture rules, CI and the controls that police them. A change here can weaken
+# the scanner, the supply-chain policy or the architecture rules, so it needs an owner's review.
 /docs/adr/                            @billygomez007
 /.dependency-cruiser.cjs              @billygomez007
 /.github/                             @billygomez007
+/.gitleaks.toml                       @billygomez007
+/pnpm-workspace.yaml                  @billygomez007

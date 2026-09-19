@@ -3,11 +3,10 @@ title = "legal-intelligence-platform"
 [extend]
 useDefault = true
 
-# The local-development database password is a throwaway value that appears in the compose
-# file and .env.example by design. Real credentials never belong in this repository
-# (SECURITY.md); this allowlist is deliberately narrow so it cannot hide one.
-[[allowlists]]
-description = "Throwaway local-development credentials"
-condition = "AND"
-paths = ['''(^|/)\.env\.example$''', '''(^|/)infra/docker-compose\.yml$''', '''(^|/)infra/postgres/.*\.sql$''']
-regexes = ['''legalintel_dev''', '''postgres:postgres@''']
+# No exceptions. Real credentials never belong in this repository (SECURITY.md).
+#
+# If a false positive ever needs to go away, change the fixture so it no longer resembles a
+# secret. If an exception is truly unavoidable, scope it by `regexes` to the exact fabricated
+# literal, then prove with a negative control that a DIFFERENT secret in the same file is still
+# caught. (An allowlist combining `paths` with `regexes` was tried here and silently suppressed
+# every finding in the file; only that negative control revealed it.)
