@@ -90,10 +90,30 @@ const DEFECTS = `
   CREATE VIEW g_f.unrelated_view AS SELECT 1 AS n;
 
   -- (g) SECURITY DEFINER functions
+  -- Each definer function below isolates one defect and is otherwise built the sanctioned way
+  -- (pinned search_path, EXECUTE revoked from PUBLIC), so a rule firing is about that defect.
   CREATE FUNCTION g_g.definer_bad() RETURNS int LANGUAGE sql SECURITY DEFINER AS 'SELECT 1';
+  REVOKE ALL ON FUNCTION g_g.definer_bad() FROM PUBLIC;
   CREATE FUNCTION g_g.definer_good() RETURNS int LANGUAGE sql SECURITY DEFINER
     SET search_path = pg_catalog AS 'SELECT 1';
+  REVOKE ALL ON FUNCTION g_g.definer_good() FROM PUBLIC;
+  GRANT EXECUTE ON FUNCTION g_g.definer_good() TO legalintel_app;
   CREATE FUNCTION g_g.invoker() RETURNS int LANGUAGE sql AS 'SELECT 1';
+  -- (g2) executable by every role: PostgreSQL's default, which is the defect
+  CREATE FUNCTION g_g.definer_public() RETURNS int LANGUAGE sql SECURITY DEFINER
+    SET search_path = pg_catalog AS 'SELECT 1';
+  -- (g3) builds SQL dynamically
+  CREATE FUNCTION g_g.definer_dynamic(p text) RETURNS void LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path = pg_catalog AS $$ BEGIN EXECUTE 'SELECT ' || p; END $$;
+  REVOKE ALL ON FUNCTION g_g.definer_dynamic(text) FROM PUBLIC;
+  -- (g4) pinned, but a schema other than pg_catalog comes first
+  CREATE FUNCTION g_g.definer_path_order() RETURNS int LANGUAGE sql SECURITY DEFINER
+    SET search_path = public, pg_catalog AS 'SELECT 1';
+  REVOKE ALL ON FUNCTION g_g.definer_path_order() FROM PUBLIC;
+  -- (g5) a public-data schema reaching into a tenant table with its owner's privileges
+  CREATE FUNCTION g_g.definer_tenant() RETURNS bigint LANGUAGE sql SECURITY DEFINER
+    SET search_path = pg_catalog AS 'SELECT count(*) FROM g_ok.good';
+  REVOKE ALL ON FUNCTION g_g.definer_tenant() FROM PUBLIC;
 
   -- (h) runtime-role privileges
   CREATE TABLE g_h.truncatable (id int);
@@ -275,6 +295,68 @@ describe('SECURITY DEFINER checks', () => {
     const found = await violations(defects);
     expect(rulesFor(found, 'g_g.definer_good')).toEqual([]);
     expect(rulesFor(found, 'g_g.invoker')).toEqual([]);
+  });
+
+  it('flag a definer function that every role can execute', async () => {
+    expect(rulesFor(await violations(defects), 'g_g.definer_public')).toEqual([
+      'security-definer-public-execute',
+    ]);
+  });
+
+  it('flag a definer function that builds SQL dynamically', async () => {
+    expect(rulesFor(await violations(defects), 'g_g.definer_dynamic')).toEqual([
+      'security-definer-dynamic-sql',
+    ]);
+  });
+
+  it('flag a search_path that does not list pg_catalog first', async () => {
+    expect(rulesFor(await violations(defects), 'g_g.definer_path_order')).toEqual([
+      'security-definer-search-path-order',
+    ]);
+  });
+
+  it('flag a definer function outside identity and tenancy that reaches a tenant table', async () => {
+    expect(rulesFor(await violations(defects), 'g_g.definer_tenant')).toEqual([
+      'security-definer-reads-tenant-table',
+    ]);
+    // Naming the schema as tenant-aware is a deliberate, reviewable exception.
+    const relaxed = await violations(defects, { tenantAwareSchemas: ['g_g'] });
+    expect(rulesFor(relaxed, 'g_g.definer_tenant')).toEqual([]);
+  });
+
+  describe('the reviewed inventory', () => {
+    const everything = [
+      'g_g.definer_bad',
+      'g_g.definer_good',
+      'g_g.definer_public',
+      'g_g.definer_dynamic',
+      'g_g.definer_path_order',
+      'g_g.definer_tenant',
+    ];
+
+    it('is not enforced unless one is supplied', async () => {
+      const found = await violations(defects);
+      expect(found.filter((v) => v.rule === 'security-definer-not-allowlisted')).toEqual([]);
+    });
+
+    it('flags every definer function that is not on the list', async () => {
+      const found = await violations(defects, { securityDefiners: ['g_g.definer_good'] });
+      const unlisted = found
+        .filter((v) => v.rule === 'security-definer-not-allowlisted')
+        .map((v) => v.object)
+        .sort();
+      expect(unlisted).toEqual(everything.filter((name) => name !== 'g_g.definer_good').sort());
+    });
+
+    it('flags a listed function that no longer exists, so the list cannot rot', async () => {
+      const found = await violations(defects, {
+        securityDefiners: [...everything, 'g_g.removed_long_ago'],
+      });
+      expect(found.filter((v) => v.rule === 'security-definer-allowlist-stale')).toEqual([
+        expect.objectContaining({ object: 'g_g.removed_long_ago' }),
+      ]);
+      expect(found.filter((v) => v.rule === 'security-definer-not-allowlisted')).toEqual([]);
+    });
   });
 });
 

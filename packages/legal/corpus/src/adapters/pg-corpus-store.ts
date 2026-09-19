@@ -68,12 +68,38 @@ export function mapCorpusError(error: unknown): unknown {
       );
     case 'corpus.append_only':
       return forbidden('corpus.append_only', 'This record cannot be changed or removed.');
+    case 'corpus.rights_denied':
+      return preconditionFailed(
+        'corpus.rights_denied',
+        'The rights currently in force for this source do not permit this operation.',
+      );
+    case 'corpus.passages_immutable':
+      return preconditionFailed(
+        'corpus.passages_immutable',
+        'A passage cannot be edited; replace it while the version is still ingesting.',
+      );
+    case 'corpus.review_not_pending':
+      return preconditionFailed(
+        'corpus.review_not_pending',
+        'A review decision can only be recorded for a version that is awaiting review.',
+      );
+    case 'corpus.review_not_ready':
+      return preconditionFailed(
+        'corpus.review_not_ready',
+        'A version with no passages cannot be handed to review.',
+      );
+    case 'corpus.review_decision_required':
+      return preconditionFailed(
+        'corpus.review_decision_required',
+        'Approval requires the latest recorded review decision to be an approval by the approver.',
+      );
     default:
   }
 
   switch (code) {
     case '23505':
-      if (c === 'document_versions_document_id_content_checksum_key') {
+      // Content is unique per document among versions that were not rejected (migration 0003).
+      if (c === 'document_versions_content_unique') {
         return conflict(
           'corpus.duplicate_content',
           'This exact content is already a version of the document.',
@@ -174,6 +200,17 @@ export interface CitationRecord {
   readonly citationText: string;
   readonly evidencePassageId: PassageId;
   readonly reviewStatus: ReviewStatus;
+}
+
+export type ReviewDecisionKind = 'approve' | 'reject' | 'hold';
+
+export interface NewReviewDecision {
+  readonly versionId: VersionId;
+  readonly decision: ReviewDecisionKind;
+  /** Stable machine-readable reason, never free text: it is stored and audited. */
+  readonly reasonCode: string;
+  /** The reviewing person. The database cannot know who the human is; the caller supplies it. */
+  readonly decidedBy: string;
 }
 
 export const sha256 = (input: string | Buffer): Buffer =>
@@ -397,8 +434,70 @@ export const corpusStore = {
     }
   },
 
+  /**
+   * The rights decision in force NOW for every named use, or a typed `corpus.rights_denied`.
+   * Unlike the read-time gate this re-reads the clock on each call, so long-running work stops
+   * when rights are withdrawn. Returns the decision relied on, for evidence.
+   */
+  async requireRightsInForce(
+    tx: Tx,
+    sourceId: SourceId,
+    uses: readonly RightsUse[],
+  ): Promise<string> {
+    return guard(() =>
+      idOf(tx, 'SELECT corpus.rights_decision_in_force($1, $2::text[]) AS id', [sourceId, uses]),
+    );
+  },
+
   // ---- dataops: review and publication ---------------------------------------------------
-  async approveVersion(tx: Tx, versionId: VersionId, approvedBy: string): Promise<void> {
+  /**
+   * Appends a human review decision. Decisions are never edited; the latest one governs, so a
+   * later reject or hold withdraws an earlier approval. Returns the decision id.
+   */
+  async recordReviewDecision(tx: Tx, input: NewReviewDecision): Promise<string> {
+    return guard(() =>
+      idOf(
+        tx,
+        `INSERT INTO corpus.version_review_decisions (version_id, decision, reason_code, decided_by)
+         VALUES ($1, $2, $3, $4) RETURNING id`,
+        [input.versionId, input.decision, input.reasonCode, input.decidedBy],
+      ),
+    );
+  },
+
+  /**
+   * Records the approval decision and moves the version to `approved` in the caller's
+   * transaction (the database refuses the move without the decision). Returns the decision id.
+   */
+  async approveVersion(
+    tx: Tx,
+    versionId: VersionId,
+    approvedBy: string,
+    reasonCode = 'approved',
+  ): Promise<string> {
+    let decisionId: string;
+    try {
+      decisionId = await this.recordReviewDecision(tx, {
+        versionId,
+        decision: 'approve',
+        reasonCode,
+        decidedBy: approvedBy,
+      });
+    } catch (error) {
+      // A version that is not awaiting review is a lifecycle problem, as it always was.
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        error.code === 'corpus.review_not_pending'
+      ) {
+        throw preconditionFailed(
+          'corpus.invalid_transition',
+          'That lifecycle change is not allowed.',
+        );
+      }
+      throw error;
+    }
     const result = await guard(() =>
       tx.query(
         `UPDATE corpus.document_versions SET lifecycle_state = 'approved', approved_by = $2 WHERE id = $1`,
@@ -407,6 +506,7 @@ export const corpusStore = {
     );
     if (result.rowCount === 0)
       throw notFound('corpus.version_not_found', 'No such version in a state you may change.');
+    return decisionId;
   },
 
   async publishVersion(tx: Tx, versionId: VersionId, publishedBy: string): Promise<void> {

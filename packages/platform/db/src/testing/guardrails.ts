@@ -23,6 +23,12 @@ export type GuardrailRule =
   | 'view-over-tenant-not-security-invoker'
   | 'materialized-view-over-tenant'
   | 'security-definer-without-search-path'
+  | 'security-definer-search-path-order'
+  | 'security-definer-public-execute'
+  | 'security-definer-dynamic-sql'
+  | 'security-definer-not-allowlisted'
+  | 'security-definer-allowlist-stale'
+  | 'security-definer-reads-tenant-table'
   | 'runtime-role-unsafe-attribute'
   | 'runtime-role-owns-relation'
   | 'runtime-role-can-create-in-schema'
@@ -52,6 +58,19 @@ export interface GuardrailOptions {
    * package's tests can pass the roots that exist in the schemas it migrates.
    */
   readonly tenantRootTables?: readonly string[];
+  /**
+   * The complete, reviewed inventory of SECURITY DEFINER functions, as `schema.name`. A definer
+   * function runs with its owner's privileges, so adding one changes the trust model and must be
+   * a deliberate, reviewed edit of this list. When given, any other definer is a violation, and
+   * so is an entry that no longer exists (a stale list stops being a review).
+   */
+  readonly securityDefiners?: readonly string[];
+  /**
+   * Schemas whose definer functions may touch tenant tables: identity and tenancy bootstrap.
+   * A definer function anywhere else (the public corpus, ingestion) must not, or it becomes a way
+   * around row-level security. Default: iam and app.
+   */
+  readonly tenantAwareSchemas?: readonly string[];
 }
 
 export const DEFAULT_TENANT_ROOTS: readonly string[] = ['iam.organizations'];
@@ -355,22 +374,98 @@ async function checkViews(
   }
 }
 
-async function checkSecurityDefiner(client: Client, out: GuardrailViolation[]): Promise<void> {
-  const result = await client.query<{ qualified: string; proconfig: string[] | null }>(
-    `SELECT n.nspname || '.' || p.proname AS qualified, p.proconfig
+async function checkSecurityDefiner(
+  client: Client,
+  tables: readonly TenantTable[],
+  options: GuardrailOptions,
+  out: GuardrailViolation[],
+): Promise<void> {
+  const result = await client.query<{
+    schema: string;
+    qualified: string;
+    proconfig: string[] | null;
+    public_execute: boolean;
+    body: string;
+  }>(
+    `SELECT n.nspname AS schema, n.nspname || '.' || p.proname AS qualified, p.proconfig,
+            has_function_privilege('public', p.oid, 'EXECUTE') AS public_execute,
+            p.prosrc AS body
        FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-      WHERE p.prosecdef AND n.nspname <> ALL($1::text[])`,
+      WHERE p.prosecdef AND n.nspname <> ALL($1::text[])
+      ORDER BY 2`,
     [SYSTEM_SCHEMAS],
   );
+  const tenantAware = new Set(options.tenantAwareSchemas ?? ['iam', 'app']);
+  const allowed = options.securityDefiners === undefined ? null : new Set(options.securityDefiners);
+  const seen = new Set<string>();
+
   for (const fn of result.rows) {
-    const pinned = (fn.proconfig ?? []).some((setting) => setting.startsWith('search_path='));
-    if (!pinned) {
+    seen.add(fn.qualified);
+    const searchPath = (fn.proconfig ?? []).find((setting) => setting.startsWith('search_path='));
+    if (searchPath === undefined) {
       out.push({
         rule: 'security-definer-without-search-path',
         object: fn.qualified,
         detail:
           'SECURITY DEFINER functions must pin search_path (SET search_path = ...), or a caller can shadow objects the function resolves.',
       });
+    } else {
+      const first = searchPath.slice('search_path='.length).split(',')[0]?.trim().replace(/"/g, '');
+      if (first !== 'pg_catalog') {
+        out.push({
+          rule: 'security-definer-search-path-order',
+          object: fn.qualified,
+          detail: `search_path must list pg_catalog first (found "${searchPath}"), so nothing in a schema a caller can influence resolves before the built-ins.`,
+        });
+      }
+    }
+    if (fn.public_execute) {
+      out.push({
+        rule: 'security-definer-public-execute',
+        object: fn.qualified,
+        detail:
+          'Every role can execute this SECURITY DEFINER function (PostgreSQL grants EXECUTE to PUBLIC by default). REVOKE ALL ... FROM PUBLIC, then grant it to the roles that need it.',
+      });
+    }
+    if (/\bEXECUTE\b/i.test(fn.body)) {
+      out.push({
+        rule: 'security-definer-dynamic-sql',
+        object: fn.qualified,
+        detail:
+          'A SECURITY DEFINER function builds SQL dynamically (EXECUTE). With its owner privileges, any interpolation flaw becomes privilege escalation. Use static SQL.',
+      });
+    }
+    if (!tenantAware.has(fn.schema)) {
+      for (const table of tables) {
+        if (new RegExp(`\\b${table.qualified.replace(/\./g, '\\.')}\\b`).test(fn.body)) {
+          out.push({
+            rule: 'security-definer-reads-tenant-table',
+            object: fn.qualified,
+            detail: `Reaches tenant table ${table.qualified} with its owner's privileges, which bypasses row-level security. Only identity and tenancy functions (${[...tenantAware].join(', ')}) may.`,
+          });
+        }
+      }
+    }
+    if (allowed !== null && !allowed.has(fn.qualified)) {
+      out.push({
+        rule: 'security-definer-not-allowlisted',
+        object: fn.qualified,
+        detail:
+          'A SECURITY DEFINER function that is not in the reviewed inventory. Adding one changes the trust model: review it, then add it to the list on purpose.',
+      });
+    }
+  }
+
+  if (allowed !== null) {
+    for (const name of allowed) {
+      if (!seen.has(name)) {
+        out.push({
+          rule: 'security-definer-allowlist-stale',
+          object: name,
+          detail:
+            'Listed as a SECURITY DEFINER function but it does not exist. Remove it from the inventory.',
+        });
+      }
     }
   }
 }
@@ -480,7 +575,7 @@ export async function checkGuardrails(
   await checkTenantRoots(client, options.tenantRootTables ?? DEFAULT_TENANT_ROOTS, violations);
   await checkForeignKeys(client, tables, violations);
   await checkViews(client, tables, violations);
-  await checkSecurityDefiner(client, violations);
+  await checkSecurityDefiner(client, tables, options, violations);
   await checkRuntimeRoles(
     client,
     options.runtimeRoleNames ?? RUNTIME_ROLES.map((role) => DB_ROLES[role]),

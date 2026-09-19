@@ -33,3 +33,4 @@ An ADR records one significant decision: the context, the decision, and the cons
 | [0004](0004-tenancy-and-row-level-security.md)          | Tenant isolation with restrictive row-level security                   | Accepted |
 | [0005](0005-authentication-authorization-and-audit.md)  | Authentication, authorization and audit                                | Accepted |
 | [0006](0006-legal-corpus-provenance-rights-and-publication.md) | Legal corpus: provenance, rights and publication | Accepted |
+| [0007](0007-legal-ingestion-boundaries.md) | Legal ingestion: ownership, rights at every boundary, and human review | Accepted |

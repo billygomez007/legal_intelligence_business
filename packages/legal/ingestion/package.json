@@ -1,20 +1,24 @@
 {
-  "name": "@legalintel/migrate",
+  "name": "@legalintel/legal-ingestion",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Composition root that lists every migration set in dependency order.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "start": "tsx src/main.ts"
+    "demo": "tsx scripts/demo.ts"
   },
   "dependencies": {
     "@legalintel/audit": "workspace:*",
-    "@legalintel/config": "workspace:*",
     "@legalintel/db": "workspace:*",
     "@legalintel/iam": "workspace:*",
+    "@legalintel/kernel": "workspace:*",
     "@legalintel/legal-corpus": "workspace:*",
-    "@legalintel/legal-ingestion": "workspace:*"
+    "@legalintel/observability": "workspace:*",
+    "parse5": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",
