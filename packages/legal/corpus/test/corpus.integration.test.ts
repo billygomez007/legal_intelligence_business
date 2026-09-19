@@ -1170,4 +1170,207 @@ describe('structural guardrails', () => {
   });
 });
 
+describe('review integrity: who approved and published cannot be rewritten', () => {
+  const pendingReview = async () => {
+    const w = await world();
+    await grant(w.sourceId, 'approved', ['display', 'index_search']);
+    const d = await draft(w);
+    await submit(d.versionId);
+    return { w, d };
+  };
+
+  it('rejects swapping the recorded approver while publishing, which would defeat the two-person rule', async () => {
+    const { d } = await pendingReview();
+    await approve(d.versionId, staff.reviewer);
+
+    // The reviewer tries to publish their OWN approval by also replacing the approver on record.
+    await rejectsWith(
+      asDataops((tx) =>
+        tx.query(
+          `UPDATE corpus.document_versions
+              SET lifecycle_state = 'published', published_by = $2, approved_by = $3
+            WHERE id = $1`,
+          [d.versionId, staff.reviewer, staff.other],
+        ),
+      ),
+      { hint: 'corpus.version_immutable' },
+    );
+    expect(await userSees(d.versionId)).toBe(false);
+  });
+
+  it('rejects rewriting who published a version while withdrawing it', async () => {
+    const p = await published();
+    await rejectsWith(
+      asDataops((tx) =>
+        tx.query(
+          `UPDATE corpus.document_versions
+              SET lifecycle_state = 'withdrawn', withdrawal_reason = 'SYNTHETIC', published_by = $2
+            WHERE id = $1`,
+          [p.versionId, staff.other],
+        ),
+      ),
+      { hint: 'corpus.version_immutable' },
+    );
+    expect(await userSees(p.versionId)).toBe(true);
+  });
+
+  it('rejects changing the approver on any transition other than the one that records it', async () => {
+    const { d } = await pendingReview();
+    await approve(d.versionId, staff.reviewer);
+    await rejectsWith(
+      asDataops((tx) =>
+        tx.query(
+          `UPDATE corpus.document_versions SET lifecycle_state = 'rejected', approved_by = $2 WHERE id = $1`,
+          [d.versionId, staff.other],
+        ),
+      ),
+      { hint: 'corpus.version_immutable' },
+    );
+  });
+
+  it('does not let data-ops name the approval, publication or withdrawal times at all', async () => {
+    const { d } = await pendingReview();
+    await rejectsWith(
+      asDataops((tx) =>
+        tx.query(
+          `UPDATE corpus.document_versions
+              SET lifecycle_state = 'approved', approved_by = $2, approved_at = '2000-01-01T00:00:00Z'
+            WHERE id = $1`,
+          [d.versionId, staff.reviewer],
+        ),
+      ),
+      { code: '42501' },
+    );
+  });
+
+  it('assigns those times itself, so even a superuser cannot backdate a transition', async () => {
+    const { d } = await pendingReview();
+    await admin((c) =>
+      c.query(
+        `UPDATE corpus.document_versions
+            SET lifecycle_state = 'approved', approved_by = $2, approved_at = '2000-01-01T00:00:00Z'
+          WHERE id = $1`,
+        [d.versionId, staff.reviewer],
+      ),
+    );
+    const row = await admin((c) =>
+      c.query<{ approved_at: Date }>(
+        'SELECT approved_at FROM corpus.document_versions WHERE id = $1',
+        [d.versionId],
+      ),
+    );
+    expect(Date.now() - (row.rows[0]?.approved_at.getTime() ?? 0)).toBeLessThan(60_000);
+  });
+});
+
+describe('ingestion cannot alter the metadata of an approved or published document', () => {
+  const details = (documentId: DocumentId) =>
+    admin((c) =>
+      c.query<{ docket_number: string | null; repeal_status: string | null }>(
+        `SELECT cd.docket_number, ld.repeal_status
+           FROM corpus.legal_documents d
+           LEFT JOIN corpus.case_details cd ON cd.document_id = d.id
+           LEFT JOIN corpus.legislation_details ld ON ld.document_id = d.id
+          WHERE d.id = $1`,
+        [documentId],
+      ),
+    );
+
+  it('lets ingestion refine its extraction while the document is still a draft, then freezes it', async () => {
+    const w = await world();
+    await grant(w.sourceId, 'approved', ['display', 'index_search']);
+    const d = await draft(w);
+    await asIngest((tx) =>
+      corpusStore.addCaseDetails(tx, {
+        documentId: d.documentId,
+        jurisdictionId: w.jurisdictionId,
+        courtId: w.court,
+        docketNumber: 'DRAFT-1',
+      }),
+    );
+    await asIngest((tx) =>
+      tx.query(
+        `INSERT INTO corpus.legislation_details (document_id, repeal_status) VALUES ($1, 'in_force')`,
+        [d.documentId],
+      ),
+    );
+
+    const edit = (sql: string) => asIngest((tx) => tx.query(sql, [d.documentId]));
+    const refine = `UPDATE corpus.case_details SET docket_number = 'DRAFT-2' WHERE document_id = $1`;
+    expect((await edit(refine)).rowCount).toBe(1); // ingesting: allowed
+
+    await submit(d.versionId);
+    expect((await edit(refine)).rowCount).toBe(1); // pending review: still ingestion's draft
+
+    await approve(d.versionId);
+    await publish(d.versionId);
+
+    // Approved and published: ingestion can no longer touch either table. The policy filters
+    // the rows, so the statements affect nothing rather than raising.
+    const tamper = [
+      `UPDATE corpus.case_details SET docket_number = 'TAMPERED' WHERE document_id = $1`,
+      `UPDATE corpus.legislation_details SET repeal_status = 'repealed' WHERE document_id = $1`,
+    ];
+    for (const sql of tamper) expect((await edit(sql)).rowCount, sql).toBe(0);
+
+    const after = (await details(d.documentId)).rows[0];
+    expect(after).toEqual({ docket_number: 'DRAFT-2', repeal_status: 'in_force' });
+  });
+
+  it('will not let ingestion add details to a document that already has an approved version', async () => {
+    const w = await world();
+    await grant(w.sourceId, 'approved', ['display', 'index_search']);
+    const d = await draft(w);
+    await submit(d.versionId);
+    await approve(d.versionId);
+
+    await rejectsWith(
+      asIngest((tx) =>
+        corpusStore.addCaseDetails(tx, {
+          documentId: d.documentId,
+          jurisdictionId: w.jurisdictionId,
+          courtId: w.court,
+          docketNumber: 'LATE',
+        }),
+      ),
+      { code: '42501' },
+    );
+    await rejectsWith(
+      asIngest((tx) =>
+        tx.query(
+          `INSERT INTO corpus.legislation_details (document_id, repeal_status) VALUES ($1, 'repealed')`,
+          [d.documentId],
+        ),
+      ),
+      { code: '42501' },
+    );
+  });
+
+  it('still lets data-ops correct metadata on a published document (a corrections decision, made by people)', async () => {
+    const p = await published();
+    await asIngest((tx) =>
+      corpusStore.addCaseDetails(tx, {
+        documentId: p.documentId,
+        jurisdictionId: p.jurisdictionId,
+        courtId: p.court,
+        docketNumber: 'X',
+      }),
+    ).catch(() => undefined);
+    await admin((c) =>
+      c.query(
+        `INSERT INTO corpus.case_details (document_id, jurisdiction_id, court_id, docket_number)
+         VALUES ($1, $2, $3, 'ORIGINAL') ON CONFLICT (document_id) DO NOTHING`,
+        [p.documentId, p.jurisdictionId, p.court],
+      ),
+    );
+    const fixed = await asDataops((tx) =>
+      tx.query(
+        `UPDATE corpus.case_details SET docket_number = 'CORRECTED' WHERE document_id = $1`,
+        [p.documentId],
+      ),
+    );
+    expect(fixed.rowCount).toBe(1);
+  });
+});
+
 export type _Ids = DocumentId;

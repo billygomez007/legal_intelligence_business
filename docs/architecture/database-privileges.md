@@ -23,7 +23,6 @@ Reviewing a migration? A change to this file is a change to what a role can do.
 | Object | Privileges |
 | --- | --- |
 | `audit.events` | INSERT, SELECT |
-| `audit.platform_events` | INSERT |
 | `corpus.case_details` | SELECT |
 | `corpus.court_lineage` | SELECT |
 | `corpus.courts` | SELECT |
@@ -123,6 +122,7 @@ Reviewing a migration? A change to this file is a change to what a role can do.
 | --- | --- |
 | `app.current_org_id()` | EXECUTE |
 | `app.current_user_id()` | EXECUTE |
+| `corpus.has_reviewed_version()` | EXECUTE |
 | `corpus.source_allows()` | EXECUTE |
 
 ## legalintel_dataops
@@ -159,13 +159,10 @@ Reviewing a migration? A change to this file is a change to what a role can do.
 
 | Object | Privileges |
 | --- | --- |
-| `corpus.document_versions.approved_at` | UPDATE |
 | `corpus.document_versions.approved_by` | UPDATE |
 | `corpus.document_versions.lifecycle_state` | UPDATE |
-| `corpus.document_versions.published_at` | UPDATE |
 | `corpus.document_versions.published_by` | UPDATE |
 | `corpus.document_versions.withdrawal_reason` | UPDATE |
-| `corpus.document_versions.withdrawn_at` | UPDATE |
 | `corpus.legal_documents.title` | UPDATE |
 | `graph.citations.review_status` | UPDATE |
 | `graph.citations.reviewed_at` | UPDATE |
@@ -177,4 +174,5 @@ Reviewing a migration? A change to this file is a change to what a role can do.
 | --- | --- |
 | `app.current_org_id()` | EXECUTE |
 | `app.current_user_id()` | EXECUTE |
+| `corpus.has_reviewed_version()` | EXECUTE |
 | `corpus.source_allows()` | EXECUTE |

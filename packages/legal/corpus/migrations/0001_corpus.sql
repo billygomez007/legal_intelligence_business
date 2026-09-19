@@ -260,8 +260,32 @@ BEGIN
       USING ERRCODE = 'P0001', HINT = 'corpus.invalid_transition';
   END IF;
 
+  -- Who approved, who published and who withdrew are written ONCE, by the transition that
+  -- establishes them, and never rewritten by a later one. Without this a reviewer could publish
+  -- their own approval by swapping the recorded approver in the same statement (defeating the
+  -- two-person rule), or rewrite who published something while withdrawing it.
+  IF NEW.lifecycle_state <> 'approved'
+     AND (NEW.approved_by IS DISTINCT FROM OLD.approved_by
+          OR NEW.approved_at IS DISTINCT FROM OLD.approved_at) THEN
+    RAISE EXCEPTION 'the approval record is written once and cannot be rewritten'
+      USING ERRCODE = 'P0001', HINT = 'corpus.version_immutable';
+  END IF;
+  IF NEW.lifecycle_state <> 'published'
+     AND (NEW.published_by IS DISTINCT FROM OLD.published_by
+          OR NEW.published_at IS DISTINCT FROM OLD.published_at) THEN
+    RAISE EXCEPTION 'the publication record is written once and cannot be rewritten'
+      USING ERRCODE = 'P0001', HINT = 'corpus.version_immutable';
+  END IF;
+  IF NEW.lifecycle_state <> 'withdrawn'
+     AND (NEW.withdrawn_at IS DISTINCT FROM OLD.withdrawn_at
+          OR NEW.withdrawal_reason IS DISTINCT FROM OLD.withdrawal_reason) THEN
+    RAISE EXCEPTION 'the withdrawal record is written once and cannot be rewritten'
+      USING ERRCODE = 'P0001', HINT = 'corpus.version_immutable';
+  END IF;
+
+  -- Times are assigned here, never supplied: a caller cannot backdate a transition.
   IF NEW.lifecycle_state = 'approved' THEN
-    NEW.approved_at := coalesce(NEW.approved_at, now());
+    NEW.approved_at := now();
   END IF;
 
   IF NEW.lifecycle_state = 'published' THEN
@@ -271,11 +295,11 @@ BEGIN
       RAISE EXCEPTION 'the source has no current rights decision allowing display and search'
         USING ERRCODE = 'P0001', HINT = 'corpus.rights_not_cleared';
     END IF;
-    NEW.published_at := coalesce(NEW.published_at, now());
+    NEW.published_at := now();
   END IF;
 
   IF NEW.lifecycle_state = 'withdrawn' THEN
-    NEW.withdrawn_at := coalesce(NEW.withdrawn_at, now());
+    NEW.withdrawn_at := now();
   END IF;
 
   RETURN NEW;
@@ -369,6 +393,21 @@ CREATE TABLE graph.citations (
 CREATE INDEX citations_to_document_idx ON graph.citations (to_document_id);
 CREATE INDEX citations_from_version_idx ON graph.citations (from_version_id);
 
+-- Has any version of this document passed review (approved, published or withdrawn)? Used by
+-- the policies that stop ingestion rewriting the metadata of reviewed content. SECURITY INVOKER:
+-- it runs as the caller and reads versions under the caller's own policies.
+CREATE FUNCTION corpus.has_reviewed_version(p_document uuid) RETURNS boolean
+LANGUAGE sql STABLE
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM corpus.document_versions v
+     WHERE v.document_id = p_document
+       AND v.lifecycle_state IN ('approved', 'published', 'withdrawn')
+  )
+$$;
+GRANT EXECUTE ON FUNCTION corpus.has_reviewed_version(uuid)
+  TO legalintel_ingest, legalintel_dataops;
+
 -- ---------------------------------------------------------------------------------------
 -- Row-level security. The application sees only published, currently rights-cleared content.
 -- Policies nest (a passage is visible iff its version is), and the subqueries are themselves
@@ -417,14 +456,30 @@ ALTER TABLE corpus.case_details ENABLE ROW LEVEL SECURITY;
 ALTER TABLE corpus.case_details FORCE ROW LEVEL SECURITY;
 CREATE POLICY app_read ON corpus.case_details FOR SELECT TO legalintel_app
   USING (EXISTS (SELECT 1 FROM corpus.document_versions v WHERE v.document_id = case_details.document_id));
-CREATE POLICY staff_all ON corpus.case_details FOR ALL TO legalintel_ingest, legalintel_dataops
+CREATE POLICY staff_read ON corpus.case_details FOR SELECT TO legalintel_ingest, legalintel_dataops
+  USING (true);
+-- Ingestion extracts metadata for a DRAFT. Once any version of the document is approved,
+-- published or withdrawn, that metadata is a reviewed fact: only data-ops may correct it.
+CREATE POLICY ingest_insert ON corpus.case_details FOR INSERT TO legalintel_ingest
+  WITH CHECK (NOT corpus.has_reviewed_version(document_id));
+CREATE POLICY ingest_update ON corpus.case_details FOR UPDATE TO legalintel_ingest
+  USING (NOT corpus.has_reviewed_version(document_id))
+  WITH CHECK (NOT corpus.has_reviewed_version(document_id));
+CREATE POLICY dataops_write ON corpus.case_details FOR ALL TO legalintel_dataops
   USING (true) WITH CHECK (true);
 
 ALTER TABLE corpus.legislation_details ENABLE ROW LEVEL SECURITY;
 ALTER TABLE corpus.legislation_details FORCE ROW LEVEL SECURITY;
 CREATE POLICY app_read ON corpus.legislation_details FOR SELECT TO legalintel_app
   USING (EXISTS (SELECT 1 FROM corpus.document_versions v WHERE v.document_id = legislation_details.document_id));
-CREATE POLICY staff_all ON corpus.legislation_details FOR ALL TO legalintel_ingest, legalintel_dataops
+CREATE POLICY staff_read ON corpus.legislation_details FOR SELECT TO legalintel_ingest, legalintel_dataops
+  USING (true);
+CREATE POLICY ingest_insert ON corpus.legislation_details FOR INSERT TO legalintel_ingest
+  WITH CHECK (NOT corpus.has_reviewed_version(document_id));
+CREATE POLICY ingest_update ON corpus.legislation_details FOR UPDATE TO legalintel_ingest
+  USING (NOT corpus.has_reviewed_version(document_id))
+  WITH CHECK (NOT corpus.has_reviewed_version(document_id));
+CREATE POLICY dataops_write ON corpus.legislation_details FOR ALL TO legalintel_dataops
   USING (true) WITH CHECK (true);
 
 ALTER TABLE graph.citations ENABLE ROW LEVEL SECURITY;
@@ -492,8 +547,8 @@ GRANT SELECT (id, document_id, jurisdiction_id, version_number, source_id, sourc
 GRANT SELECT ON corpus.document_versions TO legalintel_ingest, legalintel_dataops;
 GRANT INSERT ON corpus.document_versions TO legalintel_ingest;
 GRANT UPDATE (lifecycle_state) ON corpus.document_versions TO legalintel_ingest;
-GRANT UPDATE (lifecycle_state, approved_by, approved_at, published_by, published_at,
-              withdrawn_at, withdrawal_reason)
+-- The timestamps are deliberately absent: the lifecycle trigger assigns them.
+GRANT UPDATE (lifecycle_state, approved_by, published_by, withdrawal_reason)
   ON corpus.document_versions TO legalintel_dataops;
 
 GRANT SELECT ON corpus.passages TO legalintel_app, legalintel_ingest, legalintel_dataops;

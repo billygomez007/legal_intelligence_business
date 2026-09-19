@@ -74,5 +74,8 @@ GRANT USAGE ON SCHEMA audit TO legalintel_app, legalintel_ingest, legalintel_dat
 GRANT SELECT, INSERT ON audit.events TO legalintel_app;
 
 -- Operators and pipelines record what they do to shared data. Only data-ops can read it back.
-GRANT INSERT ON audit.platform_events TO legalintel_app, legalintel_ingest, legalintel_dataops;
+-- The end-user API is deliberately absent: it has no operator actions to record, and granting
+-- it INSERT would let a compromised request handler forge entries in the operator trail. Add it
+-- back, with a reason, if a concrete need arises.
+GRANT INSERT ON audit.platform_events TO legalintel_ingest, legalintel_dataops;
 GRANT SELECT ON audit.platform_events TO legalintel_dataops;

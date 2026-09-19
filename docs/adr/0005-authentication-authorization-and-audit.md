@@ -39,7 +39,7 @@ Permissions (RBAC, this ADR), entitlements (what an organization has paid for; n
 14. **Append-only, enforced twice**: runtime roles hold no `UPDATE`, `DELETE` or `TRUNCATE`, and triggers reject those statements for everyone including superusers.
 15. **Recorded in the same transaction as the action**, so "it happened but was not logged" and the reverse cannot occur.
 16. **Content never enters the audit trail.** Validation rejects sensitive field names at any depth (reusing the logger's deny-list), strings over 256 characters (which is what pasted content looks like), deep nesting and oversized metadata; the database bounds size as a backstop. This implements docs/17: log identifiers, not content.
-17. **Two tables**: tenant events (standard RLS) and platform events (operator and pipeline actions on shared data, readable only by data-ops).
+17. **Two tables**: tenant events (standard RLS) and platform events (operator and pipeline actions on shared data, readable only by data-ops). Only ingestion and data-ops may write the platform log. The end-user API role cannot: it has no operator actions to record, and granting it `INSERT` would let a compromised request handler forge entries in the operator trail.
 18. **Staff roles are contributed by products**, and reviewing and publishing are separate roles (separation of duties, enforced further in Stage 4).
 
 ## Consequences
@@ -53,6 +53,9 @@ Permissions (RBAC, this ADR), entitlements (what an organization has paid for; n
 - **`SECURITY DEFINER` functions trust the transaction context** (`app.current_user_id()`), which any statement running as the application role can set. This is the same SQL-injection caveat as ADR-0004: parameterized queries only.
 - **Timing.** Equalising hash work does not remove database-lookup timing differences or network jitter. The uniform error removes the *response* oracle; a determined timing attack on key existence is mitigated by key entropy (guessing a 256-bit secret is infeasible even if a key ID is known) and, later, rate limiting.
 - **Audit integrity depends on operational control of the owner role.** A superuser can drop the triggers. A tamper-evident hash chain or an external write-once sink is a later hardening.
+- **Audit entries are only as truthful as the code that writes them.** The application role can insert an event for its own organization with any `actor_id`; the database cannot verify that the named actor is the person on the request. Correctness depends on the API recording the authenticated principal.
+- **`iam.create_organization` is callable by any signed-in user, any number of times,** and members are added by user id directly (no invitation-and-acceptance step yet). Abuse limits and an invitation flow belong to the API stage.
+- **Colleague visibility includes former members.** `iam.users` shows an organization the profile of anyone with a membership row in it, whatever its status, so a removed member's name and email remain readable to that organization. Restricting this is a product decision (audit logs still need to resolve past actors).
 - **Invitations, entitlements, custom roles and per-resource sharing are not built.** Members currently see only what their role grants; collaboration features (docs/20, Phase 2) will need resource-level access lists.
 - **Email lookup for adding members is deliberately absent** to avoid a user-enumeration endpoint; membership is added by user id.
 

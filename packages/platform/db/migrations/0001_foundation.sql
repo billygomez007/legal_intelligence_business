@@ -12,6 +12,10 @@ CREATE SCHEMA IF NOT EXISTS ops;
 COMMENT ON SCHEMA ops IS
   'Operational metadata such as migration history. Never granted to runtime roles.';
 
+-- PostgreSQL 15+ already withholds CREATE on `public` from everyone; state it here so the
+-- guarantee does not depend on a default that a managed service or an older cluster may differ on.
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+
 -- Trusted extensions: installable by the database owner without superuser.
 CREATE EXTENSION IF NOT EXISTS citext;      -- case-insensitive email/slug columns
 CREATE EXTENSION IF NOT EXISTS pg_trgm;     -- fuzzy matching for names and citations

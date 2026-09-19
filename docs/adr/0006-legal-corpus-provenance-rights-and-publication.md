@@ -25,8 +25,8 @@
 ### Lifecycle and separation of duties
 
 7. **A database-enforced state machine** (`ingesting → pending_review → approved → published → withdrawn`, plus `rejected`). The permitted moves live in `corpus.lifecycle_transitions`, and a parity test asserts they equal the TypeScript `TRANSITIONS`. Terminal states have no exit, so withdrawn or rejected content cannot reappear.
-8. **Ingestion proposes; data-ops decides.** Row-level policies confine the ingestion role to creating drafts and moving them to review or rejection; it cannot approve or publish, and cannot touch a version once it has left ingestion. Data-ops cannot create versions or edit text.
-9. **Two-person rule.** A `CHECK` requires that whoever approved a version is not the person who published it.
+8. **Ingestion proposes; data-ops decides.** Row-level policies confine the ingestion role to creating drafts and moving them to review or rejection; it cannot approve or publish, and cannot touch a version once it has left ingestion. It also cannot insert or change a document's metadata (`case_details`, `legislation_details`, which carry the court, decision date and `repeal_status`) once any of its versions is approved, published or withdrawn: reviewed metadata is a fact only data-ops may correct. Data-ops cannot create versions or edit text.
+9. **Two-person rule, and a record that cannot be rewritten.** A `CHECK` requires that whoever approved a version is not the person who published it. The approver, publisher and withdrawal records are **write-once**: each is set only by the transition that establishes it and any later transition that changes it is refused. The approval, publication and withdrawal *times* are assigned by the trigger and cannot be supplied, so a transition cannot be backdated, and data-ops holds no privilege to name them. A pre-publication review of the first implementation found that data-ops could publish its own approval by replacing the recorded approver in the same statement, and could backdate a transition; tests reproduced both exploits against the earlier schema before it was fixed.
 10. **Nothing is deleted.** Withdrawal is a state and requires a reason. `DELETE` and `TRUNCATE` are refused by trigger, for superusers as well.
 
 ### Immutability and integrity
@@ -40,7 +40,7 @@
 
 ### Test data
 
-14. **Synthetic data is labelled and fenced.** Fixtures live under a jurisdiction flagged `is_synthetic`, are named and worded as fabricated, and services refuse to start in production if any exist. No real legal content or Ghanaian reference data is committed; that waits for Phase 0 and counsel.
+14. **Synthetic data is labelled and fenced.** Fixtures live under a jurisdiction flagged `is_synthetic`, are named and worded as fabricated, and live only in test-support code that the architecture rules keep out of production code. No migration seeds any. A production deploy through `apps/migrate` fails if any synthetic jurisdiction exists, and the API and worker apply the same guard at their own startup when they exist (Stages 8-9). No real legal content or Ghanaian reference data is committed; that waits for Phase 0 and counsel.
 15. **Least privilege, by column.** The application role sees provenance (source name, checksum, acquisition date) but not storage keys, reviewer identities, pipeline versions or the rights ledger. The generated `docs/architecture/database-privileges.md` makes every role's reach reviewable.
 
 ## Consequences
@@ -54,9 +54,10 @@
 - **Purpose-specific rights are modelled and tested but not yet applied to retrieval.** Read-time visibility requires `display` only. Filtering candidates for AI generation on `ai_processing`, and API responses on `redistribute_api` (docs/15: "API rights must never exceed content rights"), is applied when search and research exist (Stages 6–7). Until then nothing calls those paths.
 - **Not built:** provisions and point-in-time legislation, the legal-concept taxonomy, full-text and vector columns, and revision history for metadata edits beyond platform audit events.
 - **A source must belong to the same jurisdiction as its documents.** A regional publisher is registered once per jurisdiction it serves.
-- **The two-person rule compares user ids.** One person holding two accounts defeats it; that is an organisational control. The corpus permissions (`corpus:review`, `corpus:publish`) are contributed to the permission catalog in Stage 5.
+- **The database cannot know who the human is.** `approved_by`, `published_by` and `reviewed_by` are supplied by the caller, because runtime roles are shared database roles. The write-once rule stops a later rewrite, not a false statement at the time it is made, and the two-person rule compares user ids, so one person holding two accounts defeats it. The API must set these fields from the authenticated staff user and give reviewing and publishing separate permissions; the corpus permissions (`corpus:review`, `corpus:publish`) are contributed to the permission catalog in Stage 5. These are organisational controls the schema alone cannot provide.
+- **Data-ops may still correct metadata and titles of published documents,** by design, with no revision history beyond platform audit events. A history table for metadata edits is deferred.
 - **The data-ops credentials are the trust root of the rights ledger.** The ledger is tamper-evident against accident and against lesser roles, not against whoever holds those credentials.
-- **Publication is not yet audited.** Recording publish/withdraw/rights events in `audit.platform_events` belongs to the API and ingestion layers.
+- **Publication is not yet audited.** Recording publish/withdraw/rights events in `audit.platform_events` belongs to the API and ingestion layers. The end-user API role cannot write that log; only ingestion and data-ops can.
 
 ## Alternatives considered
 

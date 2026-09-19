@@ -119,7 +119,7 @@ describe('append-only', () => {
   });
 
   it('protects the platform log the same way', async () => {
-    await withPublicTransaction(pool, (tx) =>
+    await withPublicTransaction(database.poolFor('dataops'), (tx) =>
       recordPlatformAuditEvent(tx, {
         actorKind: 'system',
         action: 'corpus.published',
@@ -135,8 +135,8 @@ describe('append-only', () => {
 });
 
 describe('platform audit events', () => {
-  it('can be written by every runtime role but read only by data-ops', async () => {
-    for (const role of ['app', 'ingest', 'dataops'] as const) {
+  it('can be written by operators and pipelines, read only by data-ops, and is closed to the end-user API', async () => {
+    for (const role of ['ingest', 'dataops'] as const) {
       await withPublicTransaction(database.poolFor(role), (tx) =>
         recordPlatformAuditEvent(tx, {
           actorKind: 'system',
@@ -149,8 +149,19 @@ describe('platform audit events', () => {
       .poolFor('dataops')
       .query<{ action: string }>('SELECT action FROM audit.platform_events');
     expect(read.rows.map((r) => r.action)).toEqual(
-      expect.arrayContaining(['app.acted', 'ingest.acted', 'dataops.acted']),
+      expect.arrayContaining(['ingest.acted', 'dataops.acted']),
     );
+
+    // The end-user API has no operator actions to record, and must not be able to forge them.
+    await expect(
+      withPublicTransaction(pool, (tx) =>
+        recordPlatformAuditEvent(tx, {
+          actorKind: 'system',
+          action: 'app.forged',
+          outcome: 'success',
+        }),
+      ),
+    ).rejects.toMatchObject({ code: '42501' });
 
     await expect(
       database.poolFor('app').query('SELECT * FROM audit.platform_events'),
