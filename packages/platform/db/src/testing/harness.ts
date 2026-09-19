@@ -55,6 +55,18 @@ async function connect(connectionString: string): Promise<pg.Client> {
   return client;
 }
 
+/**
+ * Admin sessions used to provision test databases are bounded: if something holds a lock we
+ * need (a leaked connection, a crashed run), we fail in seconds with a clear message instead of
+ * stalling a test run, or CI, indefinitely.
+ */
+async function connectAdmin(): Promise<pg.Client> {
+  const client = await connect(adminConnectionString());
+  await client.query("SET lock_timeout = '45s'");
+  await client.query("SET statement_timeout = '120s'");
+  return client;
+}
+
 export interface TestDatabase {
   readonly name: string;
   /** Superuser connection string for this database. Bypasses RLS; for arranging fixtures only. */
@@ -104,7 +116,7 @@ function wrap(name: string): TestDatabase {
     },
     async dispose() {
       await Promise.all(pools.map((pool) => pool.end().catch(() => undefined)));
-      const admin = await connect(adminConnectionString());
+      const admin = await connectAdmin();
       try {
         await admin.query(`DROP DATABASE IF EXISTS ${admin.escapeIdentifier(name)} WITH (FORCE)`);
       } finally {
@@ -178,7 +190,7 @@ export async function createTestDatabase(
   options: CreateTestDatabaseOptions = {},
 ): Promise<TestDatabase> {
   const sets = options.migrationSets ?? [platformMigrations];
-  const admin = await connect(adminConnectionString());
+  const admin = await connectAdmin();
   const name = `${TEST_DB_PREFIX}${Date.now()}_${randomBytes(4).toString('hex')}`;
 
   try {
@@ -205,7 +217,7 @@ export async function createTestDatabase(
 
 /** An empty database with roles but no migrations. For testing the migration runner itself. */
 export async function createEmptyTestDatabase(): Promise<TestDatabase> {
-  const admin = await connect(adminConnectionString());
+  const admin = await connectAdmin();
   const name = `${TEST_DB_PREFIX}${Date.now()}_${randomBytes(4).toString('hex')}`;
   try {
     await admin.query('SELECT pg_advisory_lock($1)', [PROVISIONING_LOCK_KEY]);

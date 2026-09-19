@@ -1,6 +1,7 @@
 import { auditMigrations } from '@legalintel/audit';
 import { platformMigrations, type MigrationSet } from '@legalintel/db';
 import { iamMigrations } from '@legalintel/iam';
+import { corpusMigrations } from '@legalintel/legal-corpus';
 
 /**
  * Every migration set in the repository, dependencies first. A set may reference objects
@@ -10,4 +11,6 @@ export const allMigrationSets: readonly MigrationSet[] = [
   platformMigrations,
   iamMigrations,
   auditMigrations,
+  // Legal-domain sets follow the platform sets they depend on (corpus references iam.users).
+  corpusMigrations,
 ];

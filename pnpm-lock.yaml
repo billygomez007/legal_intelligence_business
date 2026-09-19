@@ -104,6 +104,9 @@ importers:
       '@legalintel/iam':
         specifier: workspace:*
         version: link:../../packages/platform/iam
+      '@legalintel/legal-corpus':
+        specifier: workspace:*
+        version: link:../../packages/legal/corpus
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -111,6 +114,25 @@ importers:
       tsx:
         specifier: 'catalog:'
         version: 4.23.13
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+
+  packages/legal/corpus:
+    dependencies:
+      '@legalintel/db':
+        specifier: workspace:*
+        version: link:../../platform/db
+      '@legalintel/kernel':
+        specifier: workspace:*
+        version: link:../../platform/kernel
+    devDependencies:
+      '@legalintel/iam':
+        specifier: workspace:*
+        version: link:../../platform/iam
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.13.5
       typescript:
         specifier: 'catalog:'
         version: 6.0.3

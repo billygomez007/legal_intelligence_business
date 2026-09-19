@@ -11,7 +11,8 @@
   "dependencies": {
     "@legalintel/audit": "workspace:*",
     "@legalintel/db": "workspace:*",
-    "@legalintel/iam": "workspace:*"
+    "@legalintel/iam": "workspace:*",
+    "@legalintel/legal-corpus": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:",

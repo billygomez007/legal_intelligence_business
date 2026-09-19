@@ -32,3 +32,4 @@ An ADR records one significant decision: the context, the decision, and the cons
 | [0003](0003-postgresql-migrations-and-roles.md)         | PostgreSQL, SQL-first forward-only migrations, four database roles    | Accepted |
 | [0004](0004-tenancy-and-row-level-security.md)          | Tenant isolation with restrictive row-level security                   | Accepted |
 | [0005](0005-authentication-authorization-and-audit.md)  | Authentication, authorization and audit                                | Accepted |
+| [0006](0006-legal-corpus-provenance-rights-and-publication.md) | Legal corpus: provenance, rights and publication | Accepted |
