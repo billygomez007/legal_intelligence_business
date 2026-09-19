@@ -10,4 +10,4 @@ useDefault = true
 description = "Throwaway local-development credentials"
 condition = "AND"
 paths = ['''(^|/)\.env\.example$''', '''(^|/)infra/docker-compose\.yml$''', '''(^|/)infra/postgres/.*\.sql$''']
-regexes = ['''legalintel_dev''']
+regexes = ['''legalintel_dev''', '''postgres:postgres@''']

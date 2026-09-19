@@ -92,6 +92,7 @@ export default defineConfig(
       '**/*.test.ts',
       '**/testing/**/*.ts',
       '**/scripts/**/*.ts',
+      '**/src/cli/**/*.ts',
       '**/*.config.ts',
       '**/*.config.js',
       'packages/platform/config/src/load.ts',

@@ -37,6 +37,27 @@ export const databaseEnvSchema = z.object({
   DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(200).default(10),
 });
 
+/**
+ * One connection string per database role (see @legalintel/db roles). A process gets only the
+ * URL for the role it should run as; the migrator URL exists solely in the deploy pipeline.
+ */
+export const migratorEnvSchema = z.object({
+  MIGRATOR_DATABASE_URL: postgresUrl(),
+});
+
+export const ingestDatabaseEnvSchema = z.object({
+  INGEST_DATABASE_URL: postgresUrl(),
+});
+
+export const dataopsDatabaseEnvSchema = z.object({
+  DATAOPS_DATABASE_URL: postgresUrl(),
+});
+
+/** Superuser connection used only by the local-development role bootstrap. */
+export const bootstrapEnvSchema = z.object({
+  DB_BOOTSTRAP_ADMIN_URL: postgresUrl(),
+});
+
 export const authEnvSchema = z.object({
   AUTH_SECRET: secret(32),
 });

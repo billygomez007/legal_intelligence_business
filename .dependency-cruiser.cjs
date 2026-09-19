@@ -59,7 +59,7 @@ module.exports = {
       from: { path: '^packages/([^/]+/[^/]+)/' },
       to: {
         path: '^packages/[^/]+/[^/]+/src/',
-        pathNot: ['/src/index\\.ts$', '^packages/$1/'],
+        pathNot: ['/src/(index|testing/index)\\.ts$', '^packages/$1/'],
       },
     },
     {
@@ -69,8 +69,19 @@ module.exports = {
       from: { path: '^apps/' },
       to: {
         path: '^packages/[^/]+/[^/]+/src/',
-        pathNot: '/src/index\\.ts$',
+        pathNot: '/src/(index|testing/index)\\.ts$',
       },
+    },
+    {
+      name: 'testing-support-only-from-tests',
+      severity: 'error',
+      comment:
+        'src/testing holds test-support code (database harness, guardrail checks). Production code must not depend on it.',
+      from: {
+        path: '^(apps|packages)/',
+        pathNot: ['(^|/)test/', '\\.test\\.ts$', '/src/testing/'],
+      },
+      to: { path: '/src/testing/' },
     },
     {
       name: 'production-code-must-not-import-tests',

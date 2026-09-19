@@ -29,3 +29,5 @@ An ADR records one significant decision: the context, the decision, and the cons
 | ------------------------------------------------------- | ---------------------------------------------------------------------- | -------- |
 | [0001](0001-modular-monolith-and-layering.md)           | Modular monolith in a monorepo, with a product-agnostic platform layer | Accepted |
 | [0002](0002-toolchain-and-version-policy.md)            | Toolchain and dependency version policy                                | Accepted |
+| [0003](0003-postgresql-migrations-and-roles.md)         | PostgreSQL, SQL-first forward-only migrations, four database roles    | Accepted |
+| [0004](0004-tenancy-and-row-level-security.md)          | Tenant isolation with restrictive row-level security                   | Accepted |

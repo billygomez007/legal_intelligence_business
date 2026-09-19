@@ -2,7 +2,16 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
-import { authEnvSchema, baseEnvSchema, databaseEnvSchema, telemetryEnvSchema } from '../src';
+import {
+  authEnvSchema,
+  baseEnvSchema,
+  bootstrapEnvSchema,
+  databaseEnvSchema,
+  dataopsDatabaseEnvSchema,
+  ingestDatabaseEnvSchema,
+  migratorEnvSchema,
+  telemetryEnvSchema,
+} from '../src';
 
 /**
  * `.env.example` is the contract a new developer copies. If a schema gains a variable and
@@ -22,6 +31,10 @@ const schemaKeys = [
   ...Object.keys(databaseEnvSchema.shape),
   ...Object.keys(authEnvSchema.shape),
   ...Object.keys(telemetryEnvSchema.shape),
+  ...Object.keys(migratorEnvSchema.shape),
+  ...Object.keys(ingestDatabaseEnvSchema.shape),
+  ...Object.keys(dataopsDatabaseEnvSchema.shape),
+  ...Object.keys(bootstrapEnvSchema.shape),
 ];
 
 describe('.env.example', () => {

@@ -45,6 +45,6 @@ The technical foundation is being built in stages around the planning docs, with
 |---|---|
 | 0 Plan | Done |
 | 1 Tooling and shared kernel | Done |
-| 2 Database foundation | In progress |
-| 3 Identity, tenancy, permissions, audit | Not started |
+| 2 Database foundation | Done |
+| 3 Identity, tenancy, permissions, audit | In progress |
 | 4 Legal-data foundation | Not started |
