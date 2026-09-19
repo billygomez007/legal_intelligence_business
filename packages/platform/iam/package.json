@@ -1,0 +1,22 @@
+{
+  "name": "@legalintel/iam",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "docs:permissions": "tsx scripts/generate-permissions-doc.ts"
+  },
+  "dependencies": {
+    "@legalintel/db": "workspace:*",
+    "@legalintel/kernel": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:"
+  }
+}

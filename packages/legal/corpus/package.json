@@ -1,0 +1,22 @@
+{
+  "name": "@legalintel/legal-corpus",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./testing": "./src/testing/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@legalintel/db": "workspace:*",
+    "@legalintel/kernel": "workspace:*"
+  },
+  "devDependencies": {
+    "@legalintel/iam": "workspace:*",
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  }
+}

@@ -53,6 +53,10 @@ Build a trusted legal intelligence operating system that transforms case law, le
 
 See [`docs/INDEX.md`](docs/INDEX.md).
 
+## Engineering
+
+The implementation layer is being built around the planning documents. Start with [`docs/25_IMPLEMENTATION_PLAN.md`](docs/25_IMPLEMENTATION_PLAN.md) and the [architecture decision records](docs/adr/README.md). Current status is tracked in [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
+
 ## Important Notice
 
 This repository is a product and business planning package, not legal advice. Licensing, copyright, court-record access, privacy, professional-regulation, AI use, and data-protection requirements must be reviewed by qualified Ghanaian counsel before launch.

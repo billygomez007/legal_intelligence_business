@@ -1,0 +1,34 @@
+# Local development infrastructure. Nothing here is a production configuration.
+#
+#   docker compose -f infra/docker-compose.yml up -d
+#   pnpm --filter @legalintel/db db:setup     # roles + database + migrations
+#
+# The image includes pgvector, which the search stage (docs/25_IMPLEMENTATION_PLAN.md, Stage 6)
+# needs; CI runs the same image so development and CI cannot drift apart.
+name: legal-intelligence
+
+services:
+  postgres:
+    # Pinned by tag and digest. Dependabot (docker-compose ecosystem) proposes updates.
+    image: pgvector/pgvector:0.8.6-pg16@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b
+    environment:
+      # Throwaway superuser for local development only. Roles the application actually uses
+      # are created by `db:setup` and are not superusers.
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      # Loopback only: never expose a development database on the network. 54320 avoids
+      # clashing with a locally installed PostgreSQL on 5432.
+      - '127.0.0.1:54320:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    command: ['postgres', '-c', 'max_connections=200']
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  postgres-data:

@@ -1,0 +1,40 @@
+{
+  "name": "legal-intelligence-platform",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Ghana-first, Africa-ready legal intelligence platform",
+  "type": "module",
+  "packageManager": "pnpm@11.21.0",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "typecheck": "turbo run typecheck",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "depcruise": "depcruise apps packages --config .dependency-cruiser.cjs",
+    "test": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "test:all": "vitest run",
+    "check": "pnpm format:check && pnpm typecheck && pnpm lint && pnpm depcruise && pnpm test",
+    "db:setup": "pnpm --filter @legalintel/migrate start setup",
+    "db:migrate": "pnpm --filter @legalintel/migrate start migrate",
+    "db:status": "pnpm --filter @legalintel/migrate start status",
+    "db:bootstrap": "pnpm --filter @legalintel/migrate start bootstrap",
+    "db:test:clean": "pnpm --filter @legalintel/db db:test:clean",
+    "docs:permissions": "pnpm --filter @legalintel/iam docs:permissions"
+  },
+  "devDependencies": {
+    "@eslint/js": "catalog:",
+    "@types/node": "catalog:",
+    "dependency-cruiser": "catalog:",
+    "eslint": "catalog:",
+    "prettier": "catalog:",
+    "turbo": "catalog:",
+    "typescript": "catalog:",
+    "typescript-eslint": "catalog:",
+    "vitest": "catalog:"
+  }
+}

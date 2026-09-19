@@ -33,3 +33,7 @@
 - [22_OPERATIONS.md](22_OPERATIONS.md)
 - [23_TEAM_PLAN.md](23_TEAM_PLAN.md)
 - [24_LAUNCH_CHECKLIST.md](24_LAUNCH_CHECKLIST.md)
+
+## Engineering (implementation layer)
+- [25_IMPLEMENTATION_PLAN.md](25_IMPLEMENTATION_PLAN.md)
+- [Architecture Decision Records](adr/README.md)

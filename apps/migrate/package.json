@@ -1,0 +1,23 @@
+{
+  "name": "@legalintel/migrate",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Composition root that lists every migration set in dependency order.",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "start": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@legalintel/audit": "workspace:*",
+    "@legalintel/config": "workspace:*",
+    "@legalintel/db": "workspace:*",
+    "@legalintel/iam": "workspace:*",
+    "@legalintel/legal-corpus": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:"
+  }
+}
