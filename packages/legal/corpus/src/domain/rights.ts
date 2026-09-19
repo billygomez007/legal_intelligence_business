@@ -7,6 +7,7 @@
  * parity test runs both against the same scenarios so they cannot drift apart.
  */
 export const RIGHTS_USES = [
+  'acquire_store',
   'display',
   'index_search',
   'ai_processing',
