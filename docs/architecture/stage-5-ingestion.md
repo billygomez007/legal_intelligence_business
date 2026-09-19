@@ -1,12 +1,12 @@
 # Stage 5: legal ingestion architecture
 
-Status: implemented on `stage-5/legal-ingestion`, awaiting review. Decision record: [ADR-0007](../adr/0007-legal-ingestion-boundaries.md). Operating guide: [runbook](../runbooks/ingestion.md). Review of the code this stage started from: [stage-5-existing-implementation-review.md](../reviews/stage-5-existing-implementation-review.md).
+Status: implemented on `stage-5/legal-ingestion`, awaiting review. Decision record: [ADR-0007](../adr/0007-legal-ingestion-boundaries.md). Operating guide: [runbook](../runbooks/ingestion.md). Review of the code this stage started from: [stage-5-existing-implementation-review.md](../reviews/stage-5-existing-implementation-review.md). Founder decisions on retention, purge, fixtures, citation formats and quality exceptions (2026-09-19), and the requirements that follow from them: [ingestion-retention-and-exceptions.md](ingestion-retention-and-exceptions.md).
 
 ## 1. What this is, and is not
 
 A durable pipeline that takes one bounded, rights-cleared artifact of **public** legal material and produces a corpus version **awaiting human review**, with the evidence a reviewer needs. It optimises for correctness, provenance, reproducibility and rights enforcement, not volume.
 
-It does not publish, search, embed, answer questions or show anything to end users. It does not ingest private organisation documents (section 14). No real legal source or Ghanaian reference data is acquired or committed; every fixture is labelled synthetic.
+It does not publish, search, embed, answer questions or show anything to end users. It does not ingest private organisation documents: the founder confirmed that private tenant ingestion stays separate from the public legal corpus and is not part of this stage (section 14). No real legal source or Ghanaian reference data is acquired or committed; every fixture is labelled synthetic, and no real Ghanaian judgment or legislation is used as a parser fixture until source rights and licensing are confirmed.
 
 The stage refines docs/25: the tenant workspace moves to a later stage; indexing and embeddings (docs/14) remain Stage 6. It uses jobs (one per artifact) with stage events, not the `runs/items/stage_executions` sketch in docs/25, because one artifact per job keeps every retry, lock and audit record bounded.
 
@@ -45,7 +45,7 @@ Rights are a third concept, distinct from user authorisation and subscription en
 - Each artifact and stage event records the decision id relied on.
 - A revocation stops further processing: a queued job is closed as `failed/rights_denied` and leaves the queue; a running job stops at its next boundary. Rejecting or holding a review never asks for rights, so a person can still refuse after a revocation; approving does.
 - Acquiring and structuring is not permission to show: publication additionally needs `display` and `index_search`, checked by Stage 4.
-- Raw bytes already stored are not deleted on revocation (open decision; see the review document).
+- **Raw bytes already stored are not deleted on revocation** (founder decision, 2026-09-19). They are retained as restricted provenance and evidence only: never displayed, indexed, embedded, sent to a model, exported or redistributed. Retention and deletion are a legal-policy decision that has not been made; an audited, two-person purge workflow is designed but not built. See [ingestion-retention-and-exceptions.md](ingestion-retention-and-exceptions.md), which also states, purpose by purpose, what is enforced today and what later stages must enforce.
 
 ## 5. Raw storage
 
@@ -119,7 +119,7 @@ A review task is created for every job that stops for a person: `validation_comp
 
 ## 14. Security boundaries
 
-- **Public and private are separate.** The corpus, ingestion and graph schemas have no tenant column and no reference to a tenant table; the corpus source kinds cannot describe private material; the ingestion request carries no tenant, path, URL or storage key; the application role has no access to `ingestion`. Private tenant document ingestion is not built; if it ever is, it is a separate tenant-scoped design that never writes to the corpus.
+- **Public and private are separate.** The corpus, ingestion and graph schemas have no tenant column and no reference to a tenant table; the corpus source kinds cannot describe private material; the ingestion request carries no tenant, path, URL or storage key; the application role has no access to `ingestion`. Private tenant document ingestion is not built and is kept separate from the public legal corpus by founder decision; if it ever is built, it is a separate tenant-scoped design that never writes to the corpus.
 - **Least privilege.** The ingestion role writes evidence and drafts, cannot record a review decision, approve, publish, edit rights or read the operator audit trail. Data-ops decides but cannot run or alter jobs. See [database-privileges.md](database-privileges.md).
 - **Untrusted input.** Bounded size; strict UTF-8; no evaluation; no network access from a parser; no path from source-supplied names; hidden text dropped and reported (a known route for smuggling instructions to a machine reader); log fields are ids, counts and categories only. Extracted text is data. Nothing in this stage passes it to a model; when one does (Stage 7) it must treat the text as data and keep instructions out of it.
 - **Entry points fail closed.** Both the pipeline and review check the runtime role and refuse to run in production while any synthetic authority exists.
@@ -137,10 +137,10 @@ Structured logs carry job id, correlation id, stage, attempt, duration, category
 | `SourceAcquirer`                            | local inbox                                       | connectors per source, after rights are settled              |
 | `TextExtractor`                             | plain text, HTML                                  | isolated PDF worker                                          |
 | `OcrExtractor`                              | port only                                         | isolated OCR worker, invoked after an explicit human decision |
-| `DocumentParser`                            | `labelled-v1` (controlled and synthetic sources)  | Ghanaian judgment and legislation parsers, from real samples |
+| `DocumentParser`                            | `labelled-v1` (controlled and synthetic sources)  | Ghanaian judgment and legislation parsers, from representative lawful samples, once source rights are confirmed |
 | `IngestionStore`                            | PostgreSQL                                        |                                                              |
 | Concept hooks (`ParsedDocument.concepts`)   | always empty                                      | evidence-carrying adapters                                   |
 
 ## 17. Known limits
 
-PDF and OCR are not implemented. There is no Ghanaian parser and no pattern-based citation detection, because both need verified sources and conventions that have not been provided. A review-class failure cannot be resumed by a person; the remedy is a new job. Artifacts above 4 MiB are refused. There is no worker daemon, only `runReady`. Raw artifacts of a revoked source are retained. Full details, and what was deferred and why, are in the [review document](../reviews/stage-5-existing-implementation-review.md).
+PDF and OCR are not implemented. There is no Ghanaian parser and no pattern-based citation detection: they wait for representative lawful samples and verified citation conventions, and no format is invented. A review-class failure cannot be resumed by a person, and there is no override for a low-quality extraction; accepting one will need an explicit exception workflow with a second person's approval before the material becomes publishable or searchable (designed, not built). Artifacts above 4 MiB are refused. There is no worker daemon, only `runReady`. Raw artifacts of a revoked source are retained as restricted evidence; there is no purge (designed, not built) and no audit of reads of raw storage. Full details, and what was deferred and why, are in the [review document](../reviews/stage-5-existing-implementation-review.md).

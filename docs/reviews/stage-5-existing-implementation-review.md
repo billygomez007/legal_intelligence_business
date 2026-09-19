@@ -3,6 +3,7 @@
 - Reviewed: commit `313b2e1` on `stage-5/legal-ingestion` (the work found in the working tree, imported unmodified so it could be reviewed and diffed).
 - Plan it implements: [docs/architecture/stage-5-ingestion.md](../architecture/stage-5-ingestion.md) (`a3dab5d`).
 - Outcome: adopted as the canonical Stage 5 branch, **hardened**. Everything below is fixed in this branch unless it is marked DEFER.
+- Founder decisions on the open items were recorded on 2026-09-19 (section 9). They add no code; the requirements are in [ingestion-retention-and-exceptions.md](../architecture/ingestion-retention-and-exceptions.md).
 
 ## 1. Method and posture
 
@@ -181,7 +182,7 @@ No definer function outside `iam` may touch a tenant table (guardrail `security-
 
 ## 6. Private organisation material and the public corpus
 
-**Resolved explicitly: private tenant documents are never ingested by this pipeline, and there is no path from one to the public corpus.**
+**Resolved explicitly: private tenant documents are never ingested by this pipeline, and there is no path from one to the public corpus.** The founder confirmed on 2026-09-19 that private tenant document ingestion is kept separate from the public legal corpus and is not part of Stage 5 or PR #2.
 
 - The source kind that could have described private material no longer exists (SB-2).
 - The ingestion request accepts no tenant, storage location, URL or path, at the schema and again in the database. A request made on behalf of a tenant, or by an API key, is refused.
@@ -220,23 +221,30 @@ Note on `ingestion-rights-wrapper-ignores-rights`: it fails 54 tests because the
 | ID   | Item                                                                                                                | Why deferred                                                                                                                                                                       |
 | ---- | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | D-01 | PDF extraction and OCR                                                                                              | A PDF is refused as `unsupported_format` (reviewable, not a crash). Extracting one safely needs an isolated worker; OCR needs an explicit human decision. Ports exist, adapters do not. |
-| D-02 | Real structural parsers for Ghanaian judgments and legislation; paragraph-level segmentation with structural locators | Needs sample sources and verified conventions, and rights to use them. Not invented. The adapter interface is in place.                                                            |
-| D-03 | Pattern-based plain citation detection and a treatment-classification hook                                          | Needs verified Ghanaian citation conventions. The parser detects only explicit `Cites:` labels. Treatments are never asserted by ingestion.                                       |
+| D-02 | Real structural parsers for Ghanaian judgments and legislation; paragraph-level segmentation with structural locators | Needs representative lawful samples and confirmed source rights; no real Ghanaian judgment or legislation is used as a fixture until then (founder decision). Not invented. The adapter interface is in place. |
+| D-03 | Pattern-based plain citation detection and a treatment-classification hook                                          | Waits for verified Ghanaian citation conventions and representative lawful samples; no format is invented (founder decision). The parser detects only explicit `Cites:` labels. Treatments are never asserted by ingestion. |
 | D-04 | Human verification of metadata as an append-only decision                                                           | Machine and parser metadata stays `unreviewed`. The database refuses any other state at ingestion. Reviewers correct via Stage 4 data-ops metadata edits.                          |
-| D-05 | A "proceed anyway" path for review-class failures                                                                   | Such a job ends in `needs_review` and can be rejected or held, not resumed; the remedy is a new job after the cause is fixed. An override needs its own design, audit and two-person rule. |
+| D-05 | A "proceed anyway" path for review-class failures                                                                   | Such a job ends in `needs_review` and can be rejected or held, not resumed; the remedy is a new job after the cause is fixed. For a low-quality extraction, the founder has decided an override may exist only as an explicit exception workflow (reviewer, reason, quality warning, affected version, timestamp) with a second person's approval before the material is publishable or searchable. Designed, not built. |
 | D-06 | Audit events for publish, withdraw and rights changes                                                               | Known limit in ADR-0006. Approval and rejection through ingestion review are audited; the API layer owns the rest.                                                                 |
 | D-07 | Streaming for artifacts above 4 MiB; a scheduler or worker process                                                  | `runReady` exists and is tested; no daemon is built.                                                                                                                               |
 | D-08 | S3-compatible object storage adapter                                                                                | Port and a local development adapter only.                                                                                                                                         |
-| D-09 | Retention and purge of raw artifacts when a source's rights are withdrawn                                           | A legal decision (section 9). Today a revocation stops all further processing and hides published content; it does not delete stored raw bytes.                                   |
-| D-10 | Private tenant document ingestion                                                                                   | Deliberately not built (section 6).                                                                                                                                                |
-| D-11 | Ghanaian reference data                                                                                             | None is committed. Fixtures are labelled synthetic and production refuses to run while any exist.                                                                                  |
+| D-09 | Retention and purge of raw artifacts when a source's rights are withdrawn                                           | Founder decision (section 9): no automatic purge yet. A revocation stops all further processing and hides published content at once; retained raw bytes are restricted provenance and evidence only. Deletion is a legal-policy decision not yet made; an audited purge workflow is designed, not built. |
+| D-10 | Private tenant document ingestion                                                                                   | Deliberately not built; kept separate from the public corpus by founder decision (section 6).                                                                                      |
+| D-11 | Ghanaian reference data                                                                                             | None is committed. Fixtures are labelled synthetic, no real Ghanaian judgment or legislation is used as a fixture until rights are confirmed, and production refuses to run while any synthetic authority exists. |
 
-## 9. Decisions needed from the founder or counsel
+## 9. Founder decisions (recorded 2026-09-19)
 
-1. **Retention on revocation (D-09).** When a source's rights are withdrawn, must raw bytes already stored be purged, and by when?
-2. **Rights to use as a parser fixture.** Which real Ghanaian documents may be committed as test fixtures, if any?
-3. **Citation conventions.** A verified list of Ghanaian report and neutral citation formats, from counsel or an authoritative source, to build D-03 without inventing patterns.
-4. **Override policy (D-05).** May a reviewer accept a low-quality extraction, and under what second-person control?
+The questions this review raised, and the instruction that was cut off mid-sentence, are decided. None adds code; the requirements and designs are in [ingestion-retention-and-exceptions.md](../architecture/ingestion-retention-and-exceptions.md) and the decisions are recorded in ADR-0007 (decisions 14 to 17).
+
+1. **Private ingestion** stays separate from the public legal corpus and is not part of Stage 5 or PR #2. The Stage 5 interpretation (section 6) was correct.
+2. **Rights revocation and raw bytes (D-09).** No automatic purge yet. On revocation the material must immediately become unusable for product display, search and indexing, AI processing, API redistribution and every other prohibited purpose. Retained raw bytes are restricted provenance and evidence only. Retention and deletion remain a legal-policy decision. An audited purge workflow is designed; destructive deletion is not implemented.
+3. **Real Ghanaian fixtures (D-02, D-11).** None until source rights and licensing are confirmed. Fixtures stay clearly labelled synthetic.
+4. **Ghanaian citation conventions (D-03).** Do not invent formats. Real citation-pattern support waits for verified conventions and representative lawful samples.
+5. **Low-quality extraction override (D-05).** Only through an explicit exception workflow recording the reviewer, reason, quality warning, affected document and version, and timestamp, and requiring a second person's approval before the material becomes publishable or searchable. Not implemented; it is not needed to complete Stage 5.
+
+**What the code does today about decision 2.** Revocation stops ingestion, publication and product display at once, and each is tested. Search, AI processing, API redistribution and export have no code path yet, so the requirement is met for them structurally; the requirements those stages must meet are recorded as entry criteria. The review packet still shows data-operations staff protected text after a revocation, so that a person can reject.
+
+**Still open, for counsel:** the retention and deletion policy itself (whether a purge is mandatory, on what timetable, what must be kept as evidence, whether backups are in scope); and whether data-operations staff reading protected text of a revoked source in the review packet is itself a prohibited purpose.
 
 ## 10. Limits of this review
 

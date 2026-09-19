@@ -25,7 +25,7 @@ The stage started from an existing implementation and plan produced outside this
 
 ### The corpus is public-only
 
-6. **`user_supplied` is removed as a source kind.** It was a path from an organisation's private document to a published authority. Private tenant document ingestion is not built; if it is, it is a separate tenant-scoped design that never writes to the corpus tables. The public-corpus schemas have no tenant column and no reference to a tenant table, the application role has no access to `ingestion`, and the ingestion request accepts no tenant, path, URL or storage key. These are tested as impossibilities.
+6. **`user_supplied` is removed as a source kind.** It was a path from an organisation's private document to a published authority. Private tenant document ingestion is not built; if it is, it is a separate tenant-scoped design that never writes to the corpus tables. The public-corpus schemas have no tenant column and no reference to a tenant table, the application role has no access to `ingestion`, and the ingestion request accepts no tenant, path, URL or storage key. These are tested as impossibilities. **The founder confirmed on 2026-09-19** that private tenant document ingestion is kept separate from the public legal corpus and is not part of Stage 5 or PR #2.
 
 ### Human review
 
@@ -43,6 +43,15 @@ The stage started from an existing implementation and plan produced outside this
 
 13. **`SECURITY DEFINER` is inventoried and enforced.** Every definer function must pin `search_path` with `pg_catalog` first, must not be executable by `PUBLIC`, must not use dynamic SQL, and outside `iam` must not reach a tenant table. `apps/migrate` holds the explicit inventory (six functions, none in ingestion); an unlisted or stale entry fails the build.
 
+### Founder decisions on the open items, recorded 2026-09-19
+
+Requirements and designs are in [ingestion-retention-and-exceptions.md](../architecture/ingestion-retention-and-exceptions.md). None of the following adds code.
+
+14. **Revoked rights do not purge raw bytes automatically.** On revocation the material must immediately become unusable for product display, search and indexing, AI processing, API redistribution and every other prohibited purpose. Retained raw bytes (and the ingestion records derived from them) are **restricted provenance and evidence only**. Whether and when they must be deleted is a legal-policy decision that has not been made. An audited purge workflow is designed (two people, dry run, tombstone, crash-safe, audited) and **not implemented**: no code path deletes a raw artifact.
+15. **No real Ghanaian fixtures.** No real judgment or legislation is committed as a parser fixture until source rights and licensing are confirmed. Fixtures stay clearly labelled synthetic.
+16. **No invented citation formats.** Real citation-pattern support waits for verified conventions and representative lawful samples.
+17. **A low-quality extraction may be accepted only through an explicit exception workflow**, recording the reviewer, the reason, the quality warning, the affected document and version, and the timestamp, with a **second person's approval before the material becomes publishable or searchable**. Not implemented; today there is no override.
+
 ## Consequences
 
 - Every safety rule above was checked by disabling it and confirming a targeted test fails (seventeen mutations, all killed; see the review document).
@@ -50,14 +59,15 @@ The stage started from an existing implementation and plan produced outside this
 - Because rights are re-checked at each boundary, a revocation is felt within one stage. It costs several small queries per stage, negligible against IO. If it ever matters, batch the checks; do not drop them.
 - The reviewer sees a job that stopped for a person as a dead end: a review-class failure cannot be resumed, only re-run as a new job after the cause is fixed.
 - Stage 6 (search and embeddings) can rely on: a version reaches `pending_review` only with complete evidence; approval requires a human decision; and every passage's text equals the extraction at its offsets.
+- A revocation takes effect immediately for ingestion, publication and product display, and each is tested. Search, AI processing, API redistribution and export have no code path yet, so decision 14 is met for them structurally, not by enforcement. The requirements those stages must meet (check the specific use at read time; derived stores that cannot outlive the rights) are written down as entry criteria in the document above, so no later stage can build a path that outlives a revocation.
 
 ## Known limits
 
 - **PDF and OCR are not implemented** (`unsupported_format`, by design, until an isolated worker exists).
-- **No Ghanaian parser and no pattern-based citation detection.** Both need verified sources and conventions that have not been provided. The one parser reads explicitly labelled lines and is for controlled and synthetic sources.
+- **No Ghanaian parser and no pattern-based citation detection.** Both need representative lawful samples and verified conventions that have not been provided (decisions 15 and 16). The one parser reads explicitly labelled lines and is for controlled and synthetic sources.
 - **Machine metadata cannot be marked verified** by any current path. Human verification of metadata is a separate append-only decision, not built.
 - **The database cannot know who the human is** (ADR-0006). `decided_by` comes from the authenticated staff user in application code; two accounts held by one person defeat the two-person rule.
-- **Raw artifacts of a source whose rights are withdrawn are retained.** Retention on revocation is a legal decision.
+- **Raw artifacts of a source whose rights are withdrawn are retained, restricted to provenance and evidence** (decision 14). Retention and deletion are a legal-policy decision that has not been made. There is no purge and no audit of reads of raw storage (only the pipeline reads it today). The review packet still shows data-operations staff protected text after a revocation so a person can reject; whether that is itself a prohibited purpose is a question for counsel.
 - **Publication, withdrawal and rights changes are not audited** here (ADR-0006); approval and rejection through ingestion review are.
 - **The local storage adapter is for development.** Its safety claims hold on a POSIX filesystem and do not transfer to an object store.
 
@@ -68,3 +78,5 @@ The stage started from an existing implementation and plan produced outside this
 - **A `human` metadata origin at ingestion.** Rejected: nothing at ingestion is human. Verification is a later, separately audited decision.
 - **Retry every failure with backoff.** Rejected: a rights decision, a tampered file and an unclassified fault are not cured by trying again.
 - **Ingest tenant documents through the same pipeline with a flag.** Rejected: a flag is one mistake from a leak. Public and private are separate designs.
+- **Purge raw bytes automatically when rights are revoked.** Rejected for now (founder decision): deleting is irreversible and a legal-policy question, and evidence of what was lawfully acquired may itself need to be kept. Revocation makes the material unusable at once; the bytes stay as restricted evidence; a two-person audited purge is designed for when counsel requires it.
+- **Let a reviewer accept a low-quality extraction with one action.** Rejected: an override needs a recorded exception and a second person's approval before the material becomes publishable or searchable.

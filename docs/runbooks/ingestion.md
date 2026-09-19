@@ -91,7 +91,7 @@ await review.decide(reviewerContext, { taskId, decision: 'approve' | 'reject' | 
 | `failed`                                   | `input_invalid`          | The request was refused (unknown parser, wrong actor, tenant present) | Correct the request                                                                                                                            |
 | `failed`                                   | `internal_error`         | Unrecognised fault, or a worker died on its last attempt             | An engineer looks at the logs by job id. Never re-run without understanding it                                                                 |
 | `needs_review`                             | `unsupported_format`     | A PDF (there is no isolated extractor yet)                           | Reject or hold the task. The raw file is kept                                                                                                  |
-| `needs_review`                             | `extraction_quality_low` | Too little real text                                                 | Obtain a text source, or hold until OCR exists                                                                                                 |
+| `needs_review`                             | `extraction_quality_low` | Too little real text                                                 | Obtain a text source, or hold until OCR exists. **There is no override**: accepting a low-quality extraction will need an explicit exception workflow with a second person's approval, which is designed but not built                                                                                                 |
 | `needs_review`                             | `parse_failed`           | No passages, too many, or a line too long                            | Use a suitable parser, or a cleaner source; then a new job                                                                                     |
 | `needs_review`                             | `metadata_invalid`       | No title, or a label given twice                                     | Fix the source or parser; then a new job                                                                                                       |
 | `needs_review`                             | `duplicate_detected`     | The same content, identifier or title already exists                 | The task lists candidate documents. Reject if it is a duplicate. If it is a genuine new version, ingest it under its own identifier            |
@@ -100,7 +100,8 @@ A `needs_review` job is terminal: to try again after a fix, request a **new** jo
 
 ## 6. Situations
 
-- **Rights withdrawn.** Record a `revoked` decision. Queued jobs close as `failed/rights_denied` on their next pass; running jobs stop at their next stage; approval is refused; rejection still works. Published content disappears from end users immediately (Stage 4). **Raw artifacts already stored are kept**: whether they must be purged is an open legal decision.
+- **Rights withdrawn.** Record a `revoked` decision. Queued jobs close as `failed/rights_denied` on their next pass; running jobs stop at their next stage; approval is refused; rejection still works. Published content disappears from end users immediately (Stage 4). **Raw artifacts already stored are kept, as restricted provenance and evidence only** (founder decision, 2026-09-19): they must not be displayed, indexed, embedded, sent to a model, exported or redistributed, and nothing in the product reads them. Whether and when they must be deleted is a legal-policy decision that has not been made.
+- **Deleting stored raw bytes or ingestion records.** Do not. There is no purge workflow yet (an audited, two-person one is designed in [ingestion-retention-and-exceptions.md](../architecture/ingestion-retention-and-exceptions.md)); the triggers refuse a hand edit, and an unaudited deletion is worse than retention. If counsel requires deletion, escalate: that is the trigger to build the workflow. Note that the review packet still shows data-operations staff protected text after a revocation so a person can reject; whether that is itself permitted is a question for counsel.
 - **A job seems stuck in `running`.** A worker died. A job with attempts remaining resumes on the next pass. On its third attempt it is closed as `internal_error` by the next `run`. Do not edit the row.
 - **A retry storm.** Each job has at most three attempts and a backoff. If a whole class fails, look at the category counts, not the individual jobs.
 - **PDF.** Refused, by design, until an isolated extractor exists. Do not work around it.
@@ -136,6 +137,9 @@ SELECT version_id, decision, reason_code, decided_by, decided_at FROM corpus.ver
 - Retry a `rights_denied`, `integrity_failed` or `internal_error` job without understanding why it stopped.
 - Log a review packet, extracted text or a passage. Log identifiers only.
 - Load synthetic fixtures into a production database.
+- Delete raw artifacts or ingestion records by hand, or read retained raw bytes of a revoked source for any purpose other than provenance and evidence.
+- Commit a real Ghanaian judgment or piece of legislation as a fixture. Fixtures are clearly labelled synthetic until source rights and licensing are confirmed.
+- Invent a citation pattern. Real citation support waits for verified conventions and representative lawful samples.
 
 ## 9. Validating a change to ingestion
 

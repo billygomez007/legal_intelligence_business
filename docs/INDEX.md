@@ -39,4 +39,5 @@
 - [Architecture Decision Records](adr/README.md)
 - [Stage 5: legal ingestion architecture](architecture/stage-5-ingestion.md)
 - [Runbook: legal ingestion](runbooks/ingestion.md)
+- [Ingestion: rights revocation, retained raw bytes and quality exceptions](architecture/ingestion-retention-and-exceptions.md)
 - [Review of the existing Stage 5 implementation](reviews/stage-5-existing-implementation-review.md)
