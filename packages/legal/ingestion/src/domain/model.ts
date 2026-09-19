@@ -5,6 +5,17 @@ export const MAX_BYTES = 4 * 1024 * 1024;
 export const MAX_TEXT = 1_000_000;
 export const MAX_PASSAGES = 4000;
 export const MAX_ATTEMPTS = 3;
+/**
+ * Below this the text is mostly not letters or digits (binary noise, a broken decode, a scan
+ * without a text layer). It is a floor for routing to a person, not a claim of accuracy.
+ */
+export const MIN_EXTRACTION_QUALITY = 0.5;
+/** Minimum letters and digits for a document to be worth parsing at all. */
+export const MIN_VISIBLE_CHARACTERS = 20;
+
+/** Unicode code points, which is how offsets are counted (PostgreSQL substring semantics). */
+export const codePoints = (text: string): string[] => Array.from(text);
+export const codePointLength = (text: string): number => codePoints(text).length;
 export const safeLabel = z
   .string()
   .min(1)
@@ -71,8 +82,47 @@ export class IngestionFailure extends Error {
     this.name = 'IngestionFailure';
   }
 }
+/**
+ * Database conditions that name a specific outcome. Matched on the stable hint or code only,
+ * never on message text (which can quote values).
+ */
+const CATEGORY_BY_HINT: Readonly<Record<string, FailureCategory>> = {
+  'corpus.rights_denied': 'rights_denied',
+  'ingestion.stale_rights_evidence': 'rights_denied',
+  'ingestion.unvalidated_handoff': 'validation_failed',
+  'ingestion.task_decided': 'input_invalid',
+  'ingestion.cannot_approve': 'input_invalid',
+  'ingestion.corpus_decision_required': 'validation_failed',
+  'corpus.review_not_pending': 'validation_failed',
+  'corpus.review_not_ready': 'validation_failed',
+  'corpus.review_decision_required': 'validation_failed',
+};
+const CATEGORY_BY_APP_CODE: Readonly<Record<string, FailureCategory>> = {
+  'corpus.rights_denied': 'rights_denied',
+  'corpus.duplicate_content': 'duplicate_detected',
+  'corpus.review_not_pending': 'validation_failed',
+  'corpus.review_not_ready': 'validation_failed',
+  'corpus.review_decision_required': 'validation_failed',
+  'corpus.invalid_transition': 'validation_failed',
+};
+/** PostgreSQL condition classes that a retry can cure: connection, rollback, resources, shutdown. */
+const TRANSIENT_SQLSTATE_CLASSES = new Set(['08', '40', '53', '57']);
+
+/**
+ * Maps anything thrown while processing to a category. Unknown errors are `internal_error`
+ * (terminal, visible), never a guess at something more specific: an unclassified fault must not
+ * be retried blindly or reported as something it is not.
+ */
 export function failureCategory(error: unknown): FailureCategory {
-  return error instanceof IngestionFailure ? error.category : 'internal_error';
+  if (error instanceof IngestionFailure) return error.category;
+  if (typeof error !== 'object' || error === null) return 'internal_error';
+  const hint = 'hint' in error && typeof error.hint === 'string' ? error.hint : undefined;
+  if (hint !== undefined && hint in CATEGORY_BY_HINT)
+    return CATEGORY_BY_HINT[hint] ?? 'internal_error';
+  const code = 'code' in error && typeof error.code === 'string' ? error.code : undefined;
+  if (code === undefined) return 'internal_error';
+  if (code in CATEGORY_BY_APP_CODE) return CATEGORY_BY_APP_CODE[code] ?? 'internal_error';
+  return TRANSIENT_SQLSTATE_CLASSES.has(code.slice(0, 2)) ? 'storage_failed' : 'internal_error';
 }
 
 /** All offsets count Unicode code points, matching PostgreSQL substring indexing. */
@@ -116,6 +166,15 @@ export interface Extraction {
   extractorVersion: string;
   quality: number;
   warnings: string[];
+}
+/** Milliseconds spent in each stage of one attempt; recorded per stage, never cumulative. */
+export interface ArtifactTimings {
+  acquisitionMs: number;
+  storageMs: number;
+}
+export interface SubmitTimings {
+  parsingMs: number;
+  validationMs: number;
 }
 export interface Artifact {
   id: string;
