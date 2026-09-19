@@ -40,6 +40,5 @@ export const SOURCE_KINDS = [
   'legislature',
   'publisher',
   'institutional_repository',
-  'user_supplied',
 ] as const;
 export type SourceKind = (typeof SOURCE_KINDS)[number];

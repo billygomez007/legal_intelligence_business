@@ -324,6 +324,28 @@ describe('parity: the TypeScript rules equal the database rules', () => {
         );
         expect(inDatabase, `${scenario.name} / ${use}`).toBe(allows(decisions, use, new Date()));
       }
+
+      // The processing gate names several uses and needs every one of them.
+      const combinations: RightsUse[][] = [
+        ['acquire_store'],
+        ['derive_metadata'],
+        ['acquire_store', 'derive_metadata'],
+        ['display', 'index_search'],
+        ['display', 'ai_processing'],
+      ];
+      for (const uses of combinations) {
+        const granted = await asIngest(async (tx) => {
+          try {
+            await corpusStore.requireRightsInForce(tx, sourceId, uses);
+            return true;
+          } catch (error) {
+            if ((error as { code?: string }).code === 'corpus.rights_denied') return false;
+            throw error;
+          }
+        });
+        const expected = uses.every((use) => allows(decisions, use, new Date()));
+        expect(granted, `${scenario.name} / in force: ${uses.join('+')}`).toBe(expected);
+      }
     }
   });
 });
@@ -1245,6 +1267,16 @@ describe('review integrity: who approved and published cannot be rewritten', () 
 
   it('assigns those times itself, so even a superuser cannot backdate a transition', async () => {
     const { d } = await pendingReview();
+    // Approval needs a recorded human decision for everyone, superusers included; the property
+    // under test here is the timestamp, so give the move the decision it requires.
+    await asDataops((tx) =>
+      corpusStore.recordReviewDecision(tx, {
+        versionId: d.versionId,
+        decision: 'approve',
+        reasonCode: 'approved',
+        decidedBy: staff.reviewer,
+      }),
+    );
     await admin((c) =>
       c.query(
         `UPDATE corpus.document_versions
@@ -1374,3 +1406,306 @@ describe('ingestion cannot alter the metadata of an approved or published docume
 });
 
 export type _Ids = DocumentId;
+
+describe('rights in force now (corpus.rights_decision_in_force)', () => {
+  it('returns the decision relied upon, so evidence can name it', async () => {
+    const w = await world();
+    const first = await grant(w.sourceId, 'approved', ['acquire_store', 'derive_metadata']);
+    const relied = await asIngest((tx) =>
+      corpusStore.requireRightsInForce(tx, w.sourceId, ['acquire_store', 'derive_metadata']),
+    );
+    expect(relied).toBe(first);
+  });
+
+  it('refuses when no decision names every use the operation needs', async () => {
+    const w = await world();
+    await rejectsWith(
+      asIngest((tx) => corpusStore.requireRightsInForce(tx, w.sourceId, ['acquire_store'])),
+      { code: 'corpus.rights_denied' },
+    );
+    await grant(w.sourceId, 'approved', ['acquire_store']);
+    await rejectsWith(
+      asIngest((tx) =>
+        corpusStore.requireRightsInForce(tx, w.sourceId, ['acquire_store', 'derive_metadata']),
+      ),
+      { code: 'corpus.rights_denied' },
+    );
+  });
+
+  it('refuses an empty list of uses: an operation must say what it needs', async () => {
+    const w = await world();
+    await grant(w.sourceId, 'approved', ['acquire_store']);
+    await rejectsWith(
+      asIngest((tx) => corpusStore.requireRightsInForce(tx, w.sourceId, [])),
+      { code: 'corpus.rights_denied' },
+    );
+  });
+
+  it('sees a revocation made by someone else in the middle of a long transaction', async () => {
+    const w = await world();
+    await grant(w.sourceId, 'approved', ['acquire_store']);
+    await asIngest(async (tx) => {
+      await corpusStore.requireRightsInForce(tx, w.sourceId, ['acquire_store']);
+      await grant(w.sourceId, 'revoked', []);
+      await expect(
+        corpusStore.requireRightsInForce(tx, w.sourceId, ['acquire_store']),
+      ).rejects.toMatchObject({ code: 'corpus.rights_denied' });
+    });
+  });
+
+  it('notices an approval expiring mid-transaction, which the read-time gate does not', async () => {
+    const w = await world();
+    await grant(w.sourceId, 'approved', ['acquire_store'], {
+      effectiveFrom: new Date(Date.now() - 60_000),
+      expiresAt: new Date(Date.now() + 1500),
+    });
+    await asIngest(async (tx) => {
+      await corpusStore.requireRightsInForce(tx, w.sourceId, ['acquire_store']);
+      await tx.query('SELECT pg_sleep(2)');
+      // now() is fixed for the transaction, so the per-statement gate still says yes...
+      const stale = await tx.query<{ ok: boolean }>(
+        "SELECT corpus.source_allows($1, 'acquire_store') AS ok",
+        [w.sourceId],
+      );
+      expect(stale.rows[0]?.ok).toBe(true);
+      // ...and the processing gate, which reads the clock again, correctly says no.
+      await expect(
+        corpusStore.requireRightsInForce(tx, w.sourceId, ['acquire_store']),
+      ).rejects.toMatchObject({ code: 'corpus.rights_denied' });
+    });
+  });
+
+  it('is not callable by the application role', async () => {
+    const w = await world();
+    await rejectsWith(
+      asApp((tx) => corpusStore.requireRightsInForce(tx, w.sourceId, ['acquire_store'])),
+      { code: '42501' },
+    );
+  });
+});
+
+describe('review decisions gate approval', () => {
+  const pending = async () => {
+    const w = await world();
+    await grant(w.sourceId, 'approved', ['display', 'index_search']);
+    const d = await draft(w);
+    await submit(d.versionId);
+    return { w, d };
+  };
+  const forceApprove = (versionId: VersionId, by: string) =>
+    admin((c) =>
+      c.query(
+        "UPDATE corpus.document_versions SET lifecycle_state = 'approved', approved_by = $2 WHERE id = $1",
+        [versionId, by],
+      ),
+    );
+  const decide = (
+    versionId: VersionId,
+    decision: 'approve' | 'reject' | 'hold',
+    by = staff.reviewer,
+  ) =>
+    asDataops((tx) =>
+      corpusStore.recordReviewDecision(tx, {
+        versionId,
+        decision,
+        reasonCode: 'test_reason',
+        decidedBy: by,
+      }),
+    );
+
+  it('refuses approval with no recorded decision, whoever asks, even a superuser', async () => {
+    const { d } = await pending();
+    await expect(forceApprove(d.versionId, staff.reviewer)).rejects.toMatchObject({
+      hint: 'corpus.review_decision_required',
+    });
+    await rejectsWith(
+      asDataops((tx) =>
+        tx.query(
+          "UPDATE corpus.document_versions SET lifecycle_state = 'approved', approved_by = $2 WHERE id = $1",
+          [d.versionId, staff.reviewer],
+        ),
+      ),
+      { hint: 'corpus.review_decision_required' },
+    );
+  });
+
+  it('accepts approval once the approver has recorded an approving decision', async () => {
+    const { d } = await pending();
+    await decide(d.versionId, 'approve');
+    await forceApprove(d.versionId, staff.reviewer);
+  });
+
+  it("refuses approval on the strength of someone else's decision", async () => {
+    const { d } = await pending();
+    await decide(d.versionId, 'approve', staff.publisher);
+    await expect(forceApprove(d.versionId, staff.reviewer)).rejects.toMatchObject({
+      hint: 'corpus.review_decision_required',
+    });
+  });
+
+  it('lets the latest decision govern: a later hold or reject withdraws an approval', async () => {
+    for (const later of ['hold', 'reject'] as const) {
+      const { d } = await pending();
+      await decide(d.versionId, 'approve');
+      await decide(d.versionId, later);
+      await expect(forceApprove(d.versionId, staff.reviewer)).rejects.toMatchObject({
+        hint: 'corpus.review_decision_required',
+      });
+    }
+  });
+
+  it('records decisions only for a version that is awaiting review', async () => {
+    const w = await world();
+    await grant(w.sourceId, 'approved', ['display', 'index_search']);
+    const ingesting = await draft(w);
+    await rejectsWith(decide(ingesting.versionId, 'approve'), {
+      code: 'corpus.review_not_pending',
+    });
+    await submit(ingesting.versionId);
+    await approve(ingesting.versionId);
+    await rejectsWith(decide(ingesting.versionId, 'hold'), { code: 'corpus.review_not_pending' });
+  });
+
+  it('keeps decisions append-only', async () => {
+    const { d } = await pending();
+    const id = await decide(d.versionId, 'hold');
+    await expect(
+      admin((c) =>
+        c.query("UPDATE corpus.version_review_decisions SET decision = 'approve' WHERE id = $1", [
+          id,
+        ]),
+      ),
+    ).rejects.toMatchObject({ hint: 'corpus.append_only' });
+    await expect(
+      admin((c) => c.query('DELETE FROM corpus.version_review_decisions WHERE id = $1', [id])),
+    ).rejects.toMatchObject({ hint: 'corpus.append_only' });
+    await expect(
+      admin((c) => c.query('TRUNCATE corpus.version_review_decisions')),
+    ).rejects.toMatchObject({ hint: 'corpus.append_only' });
+  });
+
+  it('is what approveVersion does: it records the decision and returns its id', async () => {
+    const { d } = await pending();
+    const id = await approve(d.versionId);
+    const row = await admin((c) =>
+      c.query<{ decision: string; decided_by: string; version_id: string }>(
+        'SELECT decision, decided_by, version_id FROM corpus.version_review_decisions WHERE id = $1',
+        [id],
+      ),
+    );
+    expect(row.rows[0]).toMatchObject({
+      decision: 'approve',
+      decided_by: staff.reviewer,
+      version_id: d.versionId,
+    });
+  });
+
+  it('refuses to hand a version with no passages to review', async () => {
+    const w = await world();
+    const empty = await asIngest(async (tx) => {
+      const documentId = await corpusStore.createDocument(tx, {
+        jurisdictionId: w.jurisdictionId,
+        documentType: 'case',
+        title: '[SYNTHETIC] empty',
+      });
+      return corpusStore.createVersion(tx, {
+        documentId,
+        jurisdictionId: w.jurisdictionId,
+        versionNumber: 1,
+        sourceId: w.sourceId,
+        acquiredAt: new Date(),
+        contentChecksum: sha256(unique('empty')),
+        storageKey: 'synthetic/empty',
+        pipelineVersion: 'test-1',
+      });
+    });
+    await rejectsWith(submit(empty), { code: 'corpus.review_not_ready' });
+  });
+});
+
+describe('passages are immutable rows', () => {
+  it('refuses an in-place edit even while the version is ingesting', async () => {
+    const w = await world();
+    const d = await draft(w);
+    await rejectsWith(
+      asIngest((tx) =>
+        tx.query("UPDATE corpus.passages SET locator = 'moved' WHERE version_id = $1", [
+          d.versionId,
+        ]),
+      ),
+      { hint: 'corpus.passages_immutable' },
+    );
+  });
+
+  it('still lets an ingesting version replace its passages by delete and insert', async () => {
+    const w = await world();
+    const d = await draft(w);
+    await asIngest(async (tx) => {
+      await tx.query('DELETE FROM corpus.passages WHERE version_id = $1', [d.versionId]);
+      await corpusStore.addPassages(tx, d.versionId, [
+        { ordinal: 0, locator: '¶1', text: 'SYNTHETIC replacement passage.' },
+      ]);
+    });
+    const rows = await admin((c) =>
+      c.query('SELECT 1 FROM corpus.passages WHERE version_id = $1', [d.versionId]),
+    );
+    expect(rows.rowCount).toBe(1);
+  });
+});
+
+describe('content uniqueness ignores rejected versions', () => {
+  const version = (
+    w: { jurisdictionId: JurisdictionId; sourceId: SourceId },
+    documentId: DocumentId,
+    versionNumber: number,
+    checksumSeed: string,
+  ) =>
+    asIngest((tx) =>
+      corpusStore.createVersion(tx, {
+        documentId,
+        jurisdictionId: w.jurisdictionId,
+        versionNumber,
+        sourceId: w.sourceId,
+        acquiredAt: new Date(),
+        contentChecksum: sha256(checksumSeed),
+        storageKey: `synthetic/${checksumSeed}/${versionNumber}`,
+        pipelineVersion: 'test-1',
+      }),
+    );
+
+  it('lets the same bytes be ingested again after a rejection (for example after a parser fix)', async () => {
+    const w = await world();
+    const seed = unique('same-bytes');
+    const first = await draft(w, seed);
+    await submit(first.versionId);
+    await asDataops((tx) => corpusStore.rejectVersion(tx, first.versionId));
+    await version(w, first.documentId, 2, seed);
+  });
+
+  it('still refuses the same bytes twice among versions that were not rejected', async () => {
+    const w = await world();
+    const seed = unique('live-bytes');
+    const first = await draft(w, seed);
+    await rejectsWith(version(w, first.documentId, 2, seed), {
+      kind: 'conflict',
+      code: 'corpus.duplicate_content',
+    });
+  });
+});
+
+describe('the corpus is public-only', () => {
+  it('has no source kind that could describe private material', async () => {
+    const w = await world();
+    expect(SOURCE_KINDS as readonly string[]).not.toContain('user_supplied');
+    await rejectsWith(
+      asDataops((tx) =>
+        corpusStore.registerSource(tx, {
+          jurisdictionId: w.jurisdictionId,
+          name: unique('SYNTHETIC private'),
+          kind: 'user_supplied' as never,
+        }),
+      ),
+      { kind: 'validation' },
+    );
+  });
+});
