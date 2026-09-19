@@ -98,6 +98,9 @@ importers:
       '@legalintel/audit':
         specifier: workspace:*
         version: link:../../packages/platform/audit
+      '@legalintel/config':
+        specifier: workspace:*
+        version: link:../../packages/platform/config
       '@legalintel/db':
         specifier: workspace:*
         version: link:../../packages/platform/db

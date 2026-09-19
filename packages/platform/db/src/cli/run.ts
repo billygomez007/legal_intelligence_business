@@ -101,10 +101,22 @@ async function status(sets: readonly MigrationSet[]): Promise<void> {
   }
 }
 
+export interface MigrationCliOptions {
+  /**
+   * Runs after `migrate`, `setup` or `status` succeeds, with the migrator connection string.
+   * A throw fails the command (exit code 1). Used by the composition root for checks that need
+   * knowledge of packages this one must not depend on, such as "no synthetic fixtures exist".
+   */
+  readonly afterCommand?: (context: { command: string; migratorUrl: string }) => Promise<void>;
+}
+
+const HOOKED_COMMANDS = new Set(['migrate', 'setup', 'status']);
+
 /** Runs the CLI for the given migration sets. Sets exit code 1 on failure, 2 on bad usage. */
 export async function runMigrationCli(
   sets: readonly MigrationSet[],
   argv: readonly string[] = process.argv.slice(2),
+  options: MigrationCliOptions = {},
 ): Promise<void> {
   const command = argv[0] ?? '';
   try {
@@ -126,6 +138,11 @@ export async function runMigrationCli(
       default:
         console.error('Usage: <bootstrap|migrate|status|setup>');
         process.exitCode = 2;
+    }
+
+    if (options.afterCommand !== undefined && HOOKED_COMMANDS.has(command)) {
+      const { MIGRATOR_DATABASE_URL } = loadConfigFromProcessEnv(migratorEnvSchema);
+      await options.afterCommand({ command, migratorUrl: MIGRATOR_DATABASE_URL.reveal() });
     }
   } catch (error: unknown) {
     console.error(error instanceof Error ? error.message : String(error));

@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@legalintel/audit": "workspace:*",
+    "@legalintel/config": "workspace:*",
     "@legalintel/db": "workspace:*",
     "@legalintel/iam": "workspace:*",
     "@legalintel/legal-corpus": "workspace:*"
