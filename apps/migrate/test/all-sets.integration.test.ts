@@ -45,6 +45,17 @@ describe('all migration sets together', () => {
         // iam.memberships lets a user list their own memberships across organizations; its
         // bespoke restrictive policies are covered by the iam isolation tests.
         tenantTableExemptions: ['iam.memberships'],
+        // The complete, reviewed inventory of SECURITY DEFINER functions (see
+        // docs/reviews/stage-5-existing-implementation-review.md). Each runs with its owner's
+        // privileges, so adding one is a decision to make on purpose, in this list.
+        securityDefiners: [
+          'corpus.enforce_version_lifecycle',
+          'corpus.rights_decision_in_force',
+          'corpus.source_allows',
+          'iam.create_organization',
+          'iam.provision_user',
+          'iam.resolve_identity',
+        ],
       }),
     );
     expect(found, formatViolations(found)).toEqual([]);

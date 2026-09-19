@@ -91,6 +91,7 @@ Reviewing a migration? A change to this file is a change to what a role can do.
 | `audit` | USAGE |
 | `corpus` | USAGE |
 | `graph` | USAGE |
+| `ingestion` | USAGE |
 
 ### table
 
@@ -107,14 +108,34 @@ Reviewing a migration? A change to this file is a change to what a role can do.
 | `corpus.lifecycle_transitions` | SELECT |
 | `corpus.passages` | DELETE, INSERT, SELECT, UPDATE |
 | `corpus.sources` | SELECT |
+| `corpus.version_review_decisions` | SELECT |
 | `graph.citations` | INSERT, SELECT |
 | `graph.relationship_types` | SELECT |
+| `ingestion.artifacts` | INSERT, SELECT |
+| `ingestion.citation_candidates` | INSERT, SELECT |
+| `ingestion.extractions` | INSERT, SELECT |
+| `ingestion.identities` | INSERT, SELECT |
+| `ingestion.jobs` | INSERT, SELECT |
+| `ingestion.passage_evidence` | INSERT, SELECT |
+| `ingestion.review_decisions` | SELECT |
+| `ingestion.review_tasks` | INSERT, SELECT |
+| `ingestion.stage_events` | INSERT, SELECT |
+| `ingestion.version_evidence` | INSERT, SELECT |
 
 ### column
 
 | Object | Privileges |
 | --- | --- |
 | `corpus.document_versions.lifecycle_state` | UPDATE |
+| `ingestion.jobs.artifact_id` | UPDATE |
+| `ingestion.jobs.attempts` | UPDATE |
+| `ingestion.jobs.failure_category` | UPDATE |
+| `ingestion.jobs.failure_summary` | UPDATE |
+| `ingestion.jobs.next_attempt_at` | UPDATE |
+| `ingestion.jobs.stage` | UPDATE |
+| `ingestion.jobs.status` | UPDATE |
+| `ingestion.jobs.updated_at` | UPDATE |
+| `ingestion.jobs.version_id` | UPDATE |
 
 ### function
 
@@ -123,7 +144,9 @@ Reviewing a migration? A change to this file is a change to what a role can do.
 | `app.current_org_id()` | EXECUTE |
 | `app.current_user_id()` | EXECUTE |
 | `corpus.has_reviewed_version()` | EXECUTE |
+| `corpus.rights_decision_in_force()` | EXECUTE |
 | `corpus.source_allows()` | EXECUTE |
+| `ingestion.current_rights()` | EXECUTE |
 
 ## legalintel_dataops
 
@@ -135,6 +158,7 @@ Reviewing a migration? A change to this file is a change to what a role can do.
 | `audit` | USAGE |
 | `corpus` | USAGE |
 | `graph` | USAGE |
+| `ingestion` | USAGE |
 
 ### table
 
@@ -152,8 +176,19 @@ Reviewing a migration? A change to this file is a change to what a role can do.
 | `corpus.passages` | SELECT |
 | `corpus.source_rights_decisions` | INSERT, SELECT |
 | `corpus.sources` | INSERT, SELECT |
+| `corpus.version_review_decisions` | INSERT, SELECT |
 | `graph.citations` | INSERT, SELECT |
 | `graph.relationship_types` | SELECT |
+| `ingestion.artifacts` | SELECT |
+| `ingestion.citation_candidates` | SELECT |
+| `ingestion.extractions` | SELECT |
+| `ingestion.identities` | SELECT |
+| `ingestion.jobs` | SELECT |
+| `ingestion.passage_evidence` | SELECT |
+| `ingestion.review_decisions` | INSERT, SELECT |
+| `ingestion.review_tasks` | SELECT |
+| `ingestion.stage_events` | SELECT |
+| `ingestion.version_evidence` | SELECT |
 
 ### column
 
@@ -175,4 +210,6 @@ Reviewing a migration? A change to this file is a change to what a role can do.
 | `app.current_org_id()` | EXECUTE |
 | `app.current_user_id()` | EXECUTE |
 | `corpus.has_reviewed_version()` | EXECUTE |
+| `corpus.rights_decision_in_force()` | EXECUTE |
 | `corpus.source_allows()` | EXECUTE |
+| `ingestion.current_rights()` | EXECUTE |
