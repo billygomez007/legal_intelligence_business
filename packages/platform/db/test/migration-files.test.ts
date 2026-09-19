@@ -92,6 +92,25 @@ describe('parseMigration', () => {
       ).toThrow(/destructive/);
     });
 
+    it('does not mistake a protective BEFORE TRUNCATE trigger for a truncate', () => {
+      expect(() =>
+        parseMigration(
+          's',
+          '0002_x.sql',
+          'CREATE TRIGGER no_truncate BEFORE TRUNCATE ON audit.events FOR EACH STATEMENT EXECUTE FUNCTION f();',
+        ),
+      ).not.toThrow();
+    });
+
+    it('still catches a destructive statement that is not the first in the file', () => {
+      expect(() =>
+        parseMigration('s', '0002_x.sql', 'CREATE TABLE a (id int);\nTRUNCATE a;'),
+      ).toThrow(/destructive/);
+      expect(() =>
+        parseMigration('s', '0002_x.sql', 'CREATE TABLE a (id int);\n  DROP TABLE b;'),
+      ).toThrow(/destructive/);
+    });
+
     it('does not flag destructive words that appear only in comments', () => {
       expect(() =>
         parseMigration('s', '0002_x.sql', '-- we never DROP TABLE here\nCREATE TABLE t ();'),

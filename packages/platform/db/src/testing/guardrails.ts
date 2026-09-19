@@ -17,6 +17,7 @@ export type GuardrailRule =
   | 'tenant-rls-enabled'
   | 'tenant-rls-forced'
   | 'tenant-restrictive-policy'
+  | 'tenant-root-rls'
   | 'tenant-fk-composite'
   | 'non-tenant-references-tenant'
   | 'view-over-tenant-not-security-invoker'
@@ -44,7 +45,16 @@ export interface GuardrailOptions {
    * themselves can be tested against a scratch role without altering shared cluster roles.
    */
   readonly runtimeRoleNames?: readonly string[];
+  /**
+   * Tables that ARE the tenant (they have `id`, not `organization_id`), so the column-based
+   * detection cannot see them. Each must have row-level security enabled and forced, and a
+   * policy that references the tenant context. Tables that do not exist are skipped, so a
+   * package's tests can pass the roots that exist in the schemas it migrates.
+   */
+  readonly tenantRootTables?: readonly string[];
 }
+
+export const DEFAULT_TENANT_ROOTS: readonly string[] = ['iam.organizations'];
 
 const SYSTEM_SCHEMAS = ['pg_catalog', 'information_schema', 'pg_toast'];
 
@@ -160,6 +170,48 @@ async function checkTenantTables(
         detail:
           'Missing a RESTRICTIVE policy for ALL commands, TO PUBLIC, that matches organization_id against app.current_org_id() in both USING and WITH CHECK. ' +
           'A permissive-only policy can be widened by any later permissive policy.',
+      });
+    }
+  }
+}
+
+async function checkTenantRoots(
+  client: Client,
+  roots: readonly string[],
+  out: GuardrailViolation[],
+): Promise<void> {
+  for (const qualified of roots) {
+    const result = await client.query<{
+      relrowsecurity: boolean;
+      relforcerowsecurity: boolean;
+      references_context: boolean;
+    }>(
+      `SELECT c.relrowsecurity, c.relforcerowsecurity,
+              EXISTS (
+                SELECT 1 FROM pg_policy p
+                 WHERE p.polrelid = c.oid
+                   AND coalesce(pg_get_expr(p.polqual, p.polrelid), '') LIKE '%app.current_org_id()%'
+              ) AS references_context
+         FROM pg_class c
+        WHERE c.oid = to_regclass($1)`,
+      [qualified],
+    );
+    const row = result.rows[0];
+    if (row === undefined) continue; // Not migrated in this database.
+
+    if (!row.relrowsecurity || !row.relforcerowsecurity) {
+      out.push({
+        rule: 'tenant-root-rls',
+        object: qualified,
+        detail: 'A tenant root table must have row level security enabled and forced.',
+      });
+    }
+    if (!row.references_context) {
+      out.push({
+        rule: 'tenant-root-rls',
+        object: qualified,
+        detail:
+          'No policy on this tenant root references app.current_org_id(), so it is not scoped to the current tenant.',
       });
     }
   }
@@ -425,6 +477,7 @@ export async function checkGuardrails(
     tables.filter((table) => !exempt.has(table.qualified)),
     violations,
   );
+  await checkTenantRoots(client, options.tenantRootTables ?? DEFAULT_TENANT_ROOTS, violations);
   await checkForeignKeys(client, tables, violations);
   await checkViews(client, tables, violations);
   await checkSecurityDefiner(client, violations);

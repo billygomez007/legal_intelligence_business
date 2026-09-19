@@ -1,6 +1,9 @@
 import { AppError } from '@legalintel/kernel';
 import pg from 'pg';
 
+/** The pooled-connection type, re-exported so packages depend on this one, not on the driver. */
+export type DbPool = pg.Pool;
+
 export interface PoolOptions {
   readonly connectionString: string;
   /** Shown in `pg_stat_activity`; makes it possible to tell which service holds a connection. */

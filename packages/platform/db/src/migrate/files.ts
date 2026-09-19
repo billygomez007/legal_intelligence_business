@@ -32,8 +32,11 @@ const DESTRUCTIVE_ALLOWANCE = /^[ \t]*--[ \t]*migrate:allow-destructive:[ \t]*\S
  * destroy audit history", so a migration containing one must carry an explicit, reasoned
  * `-- migrate:allow-destructive: <why>` line that a reviewer will see in the diff.
  */
+// Matches destructive STATEMENTS, not the words: `BEFORE TRUNCATE ON t` in a protective trigger
+// is not a truncate. TRUNCATE, DROP TABLE/SCHEMA/DATABASE and an unqualified DELETE must start a
+// statement; DROP COLUMN appears inside ALTER TABLE so it is matched anywhere.
 const DESTRUCTIVE_STATEMENT =
-  /\b(DROP\s+(TABLE|SCHEMA|COLUMN|DATABASE)|TRUNCATE|DELETE\s+FROM\s+\S+\s*(;|$))/i;
+  /(?:^|;)\s*(?:DROP\s+(?:TABLE|SCHEMA|DATABASE)\b|TRUNCATE\b|DELETE\s+FROM\s+\S+\s*(?:;|$))|\bDROP\s+COLUMN\b/i;
 
 /** Line endings must not change a checksum: a Windows checkout is not an edited migration. */
 export function normalizeSql(sql: string): string {

@@ -78,7 +78,7 @@ Python is permitted by doc 10 for OCR/ML workers. It is not needed before Stage 
 
 ## 3. Database and tenancy
 
-**PostgreSQL 16+** is the system of record. **SQL-first, forward-only migrations** with recorded checksums (an edited historical migration fails the run). Row-level security, triggers, roles and generated columns are first-class here, and an ORM schema DSL would hide exactly the parts that matter. Typed queries via Kysely, with types generated from the migrated database and checked for drift in CI, arrive with the first repository in Stage 3; until then the package exposes a narrow transaction-scoped `query` interface.
+**PostgreSQL 16+** is the system of record. **SQL-first, forward-only migrations** with recorded checksums (an edited historical migration fails the run). Row-level security, triggers, roles and generated columns are first-class here, and an ORM schema DSL would hide exactly the parts that matter. A typed query builder (Kysely) is deferred to Stage 6, where query complexity justifies it; until then repositories use explicit SQL with typed row interfaces behind store ports.
 
 **Three classes of data, separated by schema and by privilege:**
 

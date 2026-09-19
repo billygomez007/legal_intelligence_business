@@ -29,7 +29,7 @@ The platform stores three kinds of data with different trust levels: a shared le
 - We own roughly 300 lines of migration tooling, covered by tests including tamper, out-of-order, rollback, concurrency and lock-timeout cases. Each safety property was checked by deliberately disabling it and confirming a test fails.
 - **No rollbacks.** Recovery is roll-forward, or restore from backup for data damage. Backup and restore drills are a Stage 10 deliverable.
 - Trusted extensions (`citext`, `pg_trgm`, `btree_gist`) are created by migration; that needs the database to be owned by the migrator. `pgvector` is **not yet exercised**: it is not installed on the current development machine and Docker was unavailable, so the vector schema is scheduled with Stage 6. The compose file and CI use `pgvector/pgvector:0.8.6-pg16`.
-- Typed queries (Kysely, with generated types checked for drift) arrive with the first repository in Stage 3. Until then the package exposes a narrow `Tx.query` interface.
+- A typed query builder (Kysely, with generated types checked for drift) was **not** adopted in Stage 3. The IAM repository uses explicit SQL with typed row interfaces behind a store port; the decision is deferred until the search stage (Stage 6), where query complexity justifies it.
 
 ## Alternatives considered
 

@@ -18,7 +18,13 @@
     "test": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
     "test:all": "vitest run",
-    "check": "pnpm format:check && pnpm typecheck && pnpm lint && pnpm depcruise && pnpm test"
+    "check": "pnpm format:check && pnpm typecheck && pnpm lint && pnpm depcruise && pnpm test",
+    "db:setup": "pnpm --filter @legalintel/migrate start setup",
+    "db:migrate": "pnpm --filter @legalintel/migrate start migrate",
+    "db:status": "pnpm --filter @legalintel/migrate start status",
+    "db:bootstrap": "pnpm --filter @legalintel/migrate start bootstrap",
+    "db:test:clean": "pnpm --filter @legalintel/db db:test:clean",
+    "docs:permissions": "pnpm --filter @legalintel/iam docs:permissions"
   },
   "devDependencies": {
     "@eslint/js": "catalog:",

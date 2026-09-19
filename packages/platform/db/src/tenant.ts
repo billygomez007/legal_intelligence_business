@@ -113,6 +113,20 @@ export async function withTenantTransaction<T>(
 }
 
 /**
+ * Runs `fn` as a known user with no organization selected: the state between signing in and
+ * choosing a workspace. Only a user's own rows are visible (their memberships, the
+ * organizations they belong to), which is what an organization switcher needs.
+ */
+export async function withUserTransaction<T>(
+  pool: Pool,
+  userId: UserId,
+  fn: (tx: Tx) => Promise<T>,
+  options: TransactionOptions = {},
+): Promise<T> {
+  return runInTransaction(pool, { orgId: '', userId: UserId.parse(userId) }, options, fn);
+}
+
+/**
  * Runs `fn` with an explicitly empty tenant context. Use for reads of the shared corpus and
  * for system paths. Any tenant-owned table touched inside returns no rows, which is the point:
  * forgetting to choose a tenant fails closed instead of open.

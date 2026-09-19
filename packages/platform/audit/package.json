@@ -1,0 +1,21 @@
+{
+  "name": "@legalintel/audit",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@legalintel/db": "workspace:*",
+    "@legalintel/kernel": "workspace:*",
+    "@legalintel/observability": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  }
+}

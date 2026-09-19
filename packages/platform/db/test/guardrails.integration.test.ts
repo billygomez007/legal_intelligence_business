@@ -106,6 +106,19 @@ const DEFECTS = `
   CREATE TABLE g_h.safe (id int);
   GRANT SELECT, INSERT, UPDATE, DELETE ON g_h.safe TO legalintel_app;
 
+  -- (j) tenant root tables: one without RLS, one with RLS but no tenant-scoped policy, one correct
+  CREATE SCHEMA g_root;
+  CREATE TABLE g_root.no_rls (id uuid PRIMARY KEY);
+  CREATE TABLE g_root.no_policy (id uuid PRIMARY KEY);
+  ALTER TABLE g_root.no_policy ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE g_root.no_policy FORCE ROW LEVEL SECURITY;
+  CREATE POLICY open ON g_root.no_policy FOR SELECT TO legalintel_app USING (true);
+  CREATE TABLE g_root.good (id uuid PRIMARY KEY);
+  ALTER TABLE g_root.good ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE g_root.good FORCE ROW LEVEL SECURITY;
+  CREATE POLICY scoped ON g_root.good FOR SELECT TO legalintel_app
+    USING (id = (SELECT app.current_org_id()));
+
   -- (i) exempted tenant table
   CREATE TABLE g_i.exempt (organization_id uuid NOT NULL, id uuid PRIMARY KEY);
 `;
@@ -191,6 +204,22 @@ describe('tenant table checks', () => {
       ),
     );
     expect(rulesFor(await violations(defects), 'g_null.t')).toContain('tenant-org-column-not-null');
+  });
+});
+
+describe('tenant root checks', () => {
+  const roots = ['g_root.no_rls', 'g_root.no_policy', 'g_root.good', 'g_root.does_not_exist'];
+
+  it('flag a root table with no row-level security, and one whose policy ignores the tenant', async () => {
+    const found = await violations(defects, { tenantRootTables: roots });
+    expect(rulesFor(found, 'g_root.no_rls')).toEqual(['tenant-root-rls', 'tenant-root-rls']);
+    expect(rulesFor(found, 'g_root.no_policy')).toEqual(['tenant-root-rls']);
+  });
+
+  it('accept a correctly scoped root and skip one that is not migrated', async () => {
+    const found = await violations(defects, { tenantRootTables: roots });
+    expect(rulesFor(found, 'g_root.good')).toEqual([]);
+    expect(rulesFor(found, 'g_root.does_not_exist')).toEqual([]);
   });
 });
 

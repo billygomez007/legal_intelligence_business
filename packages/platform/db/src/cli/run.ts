@@ -5,8 +5,9 @@ import {
 } from '@legalintel/config';
 import pg from 'pg';
 
+import type { MigrationSet } from '../migrate/files';
 import { getMigrationStatus, runMigrations } from '../migrate/runner';
-import { REQUIRED_ROLES, platformMigrations } from '../migrate/sets';
+import { REQUIRED_ROLES } from '../migrate/sets';
 import { DB_ROLES, bootstrapRoles, devRolePasswords, hardenDatabase } from '../roles';
 
 /**
@@ -17,8 +18,8 @@ import { DB_ROLES, bootstrapRoles, devRolePasswords, hardenDatabase } from '../r
  *   status     show applied / pending / drifted migrations
  *   setup      bootstrap + create the database if missing + migrate
  *
- * This package migrates only the platform set. The composition root that also knows the
- * legal-domain sets (platform must not import legal) lists all sets in dependency order.
+ * The set list is supplied by the caller: this package must not know about packages that
+ * depend on it. A composition root (apps/migrate) lists every set in dependency order.
  */
 
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
@@ -67,11 +68,11 @@ async function createDatabaseIfMissing(): Promise<void> {
   });
 }
 
-async function migrate(): Promise<void> {
+async function migrate(sets: readonly MigrationSet[]): Promise<void> {
   const { MIGRATOR_DATABASE_URL } = loadConfigFromProcessEnv(migratorEnvSchema);
   const report = await withClient(MIGRATOR_DATABASE_URL.reveal(), (client) =>
     runMigrations(client, {
-      sets: [platformMigrations],
+      sets,
       requiredRoles: REQUIRED_ROLES,
       onEvent: (event) => {
         if (event.type === 'applied') {
@@ -85,10 +86,10 @@ async function migrate(): Promise<void> {
   console.log(`${report.applied.length} applied, ${report.alreadyApplied} already up to date`);
 }
 
-async function status(): Promise<void> {
+async function status(sets: readonly MigrationSet[]): Promise<void> {
   const { MIGRATOR_DATABASE_URL } = loadConfigFromProcessEnv(migratorEnvSchema);
   const rows = await withClient(MIGRATOR_DATABASE_URL.reveal(), (client) =>
-    getMigrationStatus(client, [platformMigrations]),
+    getMigrationStatus(client, sets),
   );
   for (const row of rows) {
     console.log(
@@ -100,26 +101,34 @@ async function status(): Promise<void> {
   }
 }
 
-async function main(): Promise<void> {
-  const command = process.argv[2] ?? '';
-  switch (command) {
-    case 'bootstrap':
-      return bootstrap();
-    case 'migrate':
-      return migrate();
-    case 'status':
-      return status();
-    case 'setup':
-      await bootstrap();
-      await createDatabaseIfMissing();
-      return migrate();
-    default:
-      console.error('Usage: main.ts <bootstrap|migrate|status|setup>');
-      process.exitCode = 2;
+/** Runs the CLI for the given migration sets. Sets exit code 1 on failure, 2 on bad usage. */
+export async function runMigrationCli(
+  sets: readonly MigrationSet[],
+  argv: readonly string[] = process.argv.slice(2),
+): Promise<void> {
+  const command = argv[0] ?? '';
+  try {
+    switch (command) {
+      case 'bootstrap':
+        await bootstrap();
+        break;
+      case 'migrate':
+        await migrate(sets);
+        break;
+      case 'status':
+        await status(sets);
+        break;
+      case 'setup':
+        await bootstrap();
+        await createDatabaseIfMissing();
+        await migrate(sets);
+        break;
+      default:
+        console.error('Usage: <bootstrap|migrate|status|setup>');
+        process.exitCode = 2;
+    }
+  } catch (error: unknown) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
   }
 }
-
-main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
-});
