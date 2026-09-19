@@ -37,3 +37,14 @@
 
 Then:
 **Phase 1: ingestion + search + source-grounded AI research**
+
+## Engineering Foundation (parallel track)
+The technical foundation is being built in stages around the planning docs, without waiting on Phase 0 business decisions. It contains no real legal content and no UI. See [`docs/25_IMPLEMENTATION_PLAN.md`](docs/25_IMPLEMENTATION_PLAN.md) for stages and exit criteria.
+
+| Stage | Status |
+|---|---|
+| 0 Plan | Done |
+| 1 Tooling and shared kernel | In progress |
+| 2 Database foundation | Not started |
+| 3 Identity, tenancy, permissions, audit | Not started |
+| 4 Legal-data foundation | Not started |
