@@ -1,0 +1,17 @@
+# Authored planning documents and templates keep their original formatting.
+/docs/
+/.github/**/*.md
+/README.md
+/AGENTS.md
+/PROJECT_STATUS.md
+/CONTRIBUTING.md
+/SECURITY.md
+/LICENSE.md
+
+pnpm-lock.yaml
+node_modules
+dist
+build
+coverage
+.turbo
+**/generated/

@@ -25,6 +25,7 @@ An ADR records one significant decision: the context, the decision, and the cons
 
 ## Index
 
-| ADR | Title | Status |
-|---|---|---|
-| — | none yet; the first ADRs land with Stage 1 | — |
+| ADR                                                     | Title                                                                  | Status   |
+| ------------------------------------------------------- | ---------------------------------------------------------------------- | -------- |
+| [0001](0001-modular-monolith-and-layering.md)           | Modular monolith in a monorepo, with a product-agnostic platform layer | Accepted |
+| [0002](0002-toolchain-and-version-policy.md)            | Toolchain and dependency version policy                                | Accepted |

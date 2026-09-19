@@ -12,3 +12,11 @@ coverage/
 *.key
 private-data/
 customer-documents/
+
+# Tooling
+.turbo/
+*.tsbuildinfo
+.pnpm-store/
+
+# Local infrastructure state
+infra/**/data/

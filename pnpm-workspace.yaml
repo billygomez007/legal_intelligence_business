@@ -1,0 +1,29 @@
+packages:
+  - apps/*
+  - packages/platform/*
+  - packages/legal/*
+
+# Single source of truth for dependency versions. Packages reference these with
+# `catalog:`. Versions are exact (no ranges); Dependabot proposes bumps.
+catalog:
+  # Toolchain
+  # TypeScript is pinned to 6.0.x: typescript-eslint 8.x declares support for
+  # `typescript <6.1.0`, and type-aware linting is non-negotiable here (see ADR-0002).
+  typescript: 6.0.3
+  '@types/node': 24.13.5
+  vitest: 5.0.1
+  eslint: 10.10.0
+  '@eslint/js': 10.0.1
+  typescript-eslint: 8.70.0
+  prettier: 3.9.8
+  turbo: 2.10.13
+  dependency-cruiser: 18.3.1
+  tsx: 4.23.13
+
+  # Runtime
+  zod: 4.6.5
+  pino: 10.3.1
+  uuid: 14.0.2
+  '@opentelemetry/api': 1.9.1
+  '@opentelemetry/sdk-trace-base': 2.11.0
+  '@opentelemetry/context-async-hooks': 2.11.0

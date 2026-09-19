@@ -1,0 +1,13 @@
+title = "legal-intelligence-platform"
+
+[extend]
+useDefault = true
+
+# The local-development database password is a throwaway value that appears in the compose
+# file and .env.example by design. Real credentials never belong in this repository
+# (SECURITY.md); this allowlist is deliberately narrow so it cannot hide one.
+[[allowlists]]
+description = "Throwaway local-development credentials"
+condition = "AND"
+paths = ['''(^|/)\.env\.example$''', '''(^|/)infra/docker-compose\.yml$''', '''(^|/)infra/postgres/.*\.sql$''']
+regexes = ['''legalintel_dev''']

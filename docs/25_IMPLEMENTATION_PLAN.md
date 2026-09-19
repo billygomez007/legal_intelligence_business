@@ -45,10 +45,11 @@ packages/
     search/         retrieval ports, Postgres hybrid implementation, evaluation harness
     research/       AI/RAG contracts, citation verifier, abstention, audit contract
     workspace/      projects, saved authorities, notes (tenant-private)
-tooling/          shared ESLint / TypeScript / dependency-rule config
-infra/            docker-compose, Postgres role bootstrap, collector config
+infra/            docker-compose and local-infrastructure config
 docs/             existing planning docs + this plan + adr/
 ```
+
+Shared tooling configuration (`tsconfig.base.json`, `eslint.config.js`, `.dependency-cruiser.cjs`, the dependency `catalog:` in `pnpm-workspace.yaml`) lives at the repository root.
 
 **Layering rules (enforced in CI by dependency-cruiser, not by convention):**
 

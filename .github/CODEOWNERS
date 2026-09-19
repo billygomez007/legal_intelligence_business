@@ -1,0 +1,23 @@
+# Code owners are requested automatically on pull requests. CONTRIBUTING.md requires heightened
+# review for legal data, AI behaviour, source rights, privacy and security; the paths below are
+# where those changes live. Replace or extend the owner as the team grows, and enable
+# "Require review from Code Owners" in branch protection.
+
+*                                     @billygomez007
+
+# Tenancy, authentication, authorization, audit
+/packages/platform/iam/               @billygomez007
+/packages/platform/audit/             @billygomez007
+/packages/platform/db/                @billygomez007
+
+# Legal-data provenance, rights, ingestion
+/packages/legal/corpus/               @billygomez007
+/packages/legal/ingestion/            @billygomez007
+
+# AI grounding and citation verification
+/packages/legal/research/             @billygomez007
+
+# Decisions, architecture rules and CI
+/docs/adr/                            @billygomez007
+/.dependency-cruiser.cjs              @billygomez007
+/.github/                             @billygomez007
