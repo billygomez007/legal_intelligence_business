@@ -1,51 +1,146 @@
-# Stage 5 ingestion implementation plan
+# Stage 5: legal ingestion architecture
 
-Status: implementation planned; acceptance results will be recorded separately.
+Status: implemented on `stage-5/legal-ingestion`, awaiting review. Decision record: [ADR-0007](../adr/0007-legal-ingestion-boundaries.md). Operating guide: [runbook](../runbooks/ingestion.md). Review of the code this stage started from: [stage-5-existing-implementation-review.md](../reviews/stage-5-existing-implementation-review.md).
 
-## Scope reconciliation
+## 1. What this is, and is not
 
-The Stage 5 brief refines docs/25: tenant workspace moves to a later stage; indexing and embeddings in docs/14 remain Stage 6. The accepted Work/Version, source-rights ledger, corpus lifecycle, role separation and modular monolith remain authoritative. No baseline migration will be rewritten. No real legal source or Ghana reference data will be acquired.
+A durable pipeline that takes one bounded, rights-cleared artifact of **public** legal material and produces a corpus version **awaiting human review**, with the evidence a reviewer needs. It optimises for correctness, provenance, reproducibility and rights enforcement, not volume.
 
-## Boundaries and flow
+It does not publish, search, embed, answer questions or show anything to end users. It does not ingest private organisation documents (section 14). No real legal source or Ghanaian reference data is acquired or committed; every fixture is labelled synthetic.
 
-`legal/ingestion` owns jobs, checkpoints, processing evidence and review tasks. `legal/corpus` remains owner of works, versions, passages and graph edges. Platform DB, audit, IAM and observability are reused. Domain types and ports contain no infrastructure. PostgreSQL and filesystem implementations live in adapters. A worker may later call the same orchestration service.
+The stage refines docs/25: the tenant workspace moves to a later stage; indexing and embeddings (docs/14) remain Stage 6. It uses jobs (one per artifact) with stage events, not the `runs/items/stage_executions` sketch in docs/25, because one artifact per job keeps every retry, lock and audit record bounded.
 
-One job processes one bounded artifact. Request schema: source, jurisdiction, operation (`structure`), source-scoped opaque input reference, expected SHA-256, media type, parser id, actor, correlation id and caller idempotency key. Only the public corpus lane exists. There is no tenant ID, arbitrary URL, local pathname or private object key in this interface.
+## 2. Ownership
 
-Flow: request/rights check → acquisition → integrity verification → private raw storage → extraction → structure/normalization → evidence-backed metadata → deterministic passages → citation candidates → concept hook (empty unless an adapter supplies evidence) → deduplication → validation → pending human review. No publication action exists in the pipeline.
+| Concern                                                                                | Owner                | Where                                    |
+| -------------------------------------------------------------------------------------- | -------------------- | ---------------------------------------- |
+| Works, versions, passages, graph edges, lifecycle, rights ledger                       | `legal/corpus`       | `packages/legal/corpus`                  |
+| Rights in force now; the review-decision gate on approval; passage immutability        | `legal/corpus`       | corpus migration `0003`                  |
+| Jobs, artifacts, extractions, evidence, review tasks and decisions, stage events        | `legal/ingestion`    | `packages/legal/ingestion`               |
+| Roles, row-level security, migrations, audit log, permissions catalogue, observability | platform packages    | `packages/platform/*`                    |
 
-## Rights
+Ingestion depends on corpus and platform; nothing depends on ingestion (enforced by the architecture rules). **Ingestion installs no trigger on a corpus table and defines no `SECURITY DEFINER` function.** It reaches the corpus through `corpusStore` and reads rights through `corpus.rights_decision_in_force`.
 
-A forward corpus migration adds `acquire_store` to the existing allowed-use list; existing approvals do not gain it. Structure requires both `acquire_store` and `derive_metadata`; display, indexing, AI processing, redistribution and export remain independent. Check current rights at request, before each processing boundary, when checkpointing and before submission. Persist the effective rights decision on artifacts/checkpoints. Rights revocation/expiry halts resumption. Rights are separate from staff authorization and entitlements.
+## 3. Pipeline and job lifecycle
 
-## Persistence, retries and transactions
+```
+request ─► acquisition ─► storage ─► extraction ─► parsing ─► validation ─► review
+ rights      bytes +       raw,        text +        passages,   evidence      version in
+ checked     SHA-256       immutable   quality       metadata,   substring     pending_review
+ (denied →   verified      SHA-256     warnings      citation    checks,       + review task
+ nothing                   kept                      candidates  dedup
+ written)
+```
 
-Persist jobs, immutable raw artifacts, extraction results, stage events, derived metadata/citation evidence and review tasks. Job status: queued → running → pending_review, failed or needs_review. Retryable failures may resume with bounded attempts/backoff; human-review and terminal failures never auto-retry. Pending review is terminal for automated ingestion. Session advisory locks serialize a job without keeping a transaction open during IO; use a direct PostgreSQL connection, not transaction-pooling mode. A crashed session releases its lock; an acquired job resumes from durable checkpoints.
+Job status: `queued → running → pending_review | needs_review | failed`. `pending_review` and `needs_review` are terminal for automation. Only `failed` jobs with a retryable category run again. Every transition is validated by a trigger on `ingestion.jobs`; identity columns (source, request, actor, pipeline version) are immutable and no job can be deleted.
 
-Request keys are unique per source and conflicting payload reuse fails. Raw storage keys are generated from source + checksum. Atomic immutable writes and verification make repeated acquisition safe. Extraction checkpoints allow retries without re-acquisition. Final corpus writes, evidence, review task and submission audit commit together. Stable passage keys derive from artifact/parser version/ordinal/locator/text; database UUIDs remain unchanged on replay. Writes are bounded and batched.
+The pipeline **never** approves or publishes. The ingestion role cannot (Stage 4 role separation, tested again here).
 
-## Deduplication and uncertain identity
+## 4. The rights gate
 
-Use source-scoped external identifiers plus jurisdiction/type when present. Cross-source matching is a review candidate, never a silent merge based on a title or unverified parser metadata. Exact artifact matches avoid duplicate versions. Changed artifacts for a known source identifier become new versions. Cross-source copies and ambiguous identity stop in review with candidates; data-ops can explicitly select an existing work. Preserve alternate acquisition provenance even when no version is created.
+Rights are a third concept, distinct from user authorisation and subscription entitlements. The operation `structure` requires both `acquire_store` and `derive_metadata`; `display`, `index_search`, `ai_processing`, `redistribute_api` and `bulk_export` are independent and not implied.
 
-## Extraction and parsing
+- Checked **at request**, **at claim**, **before every stage transition**, **before each write of evidence**, **at hand-off** and **at approval**. It fails closed: no decision, denied, revoked, expired, not yet effective, or missing either use is a refusal.
+- `corpus.rights_decision_in_force(source, uses[])` re-reads the clock on every call. The read-time gate (`corpus.source_allows`) is fixed for a statement, which is right for policies and wrong for work that runs for minutes.
+- Each artifact and stage event records the decision id relied on.
+- A revocation stops further processing: a queued job is closed as `failed/rights_denied` and leaves the queue; a running job stops at its next boundary. Rejecting or holding a review never asks for rights, so a person can still refuse after a revocation; approving does.
+- Acquiring and structuring is not permission to show: publication additionally needs `display` and `index_search`, checked by Stage 4.
+- Raw bytes already stored are not deleted on revocation (open decision; see the review document).
 
-Strict UTF-8 text and non-executing HTML extraction are first implementations. HTML is parsed as data, with executable/hidden elements discarded and structural boundaries retained; no resource fetching. PDF is a separate extractor port: a deployment without an isolated PDF extractor fails explicitly with `unsupported_format`; empty/scanned extraction requests OCR review. OCR has a port and explicit low-quality state, never an automatic default. File and extracted-text limits bound memory. All extractor/parser ids are versioned.
+## 5. Raw storage
 
-A conservative common line/heading parser supports judgment paragraphs/orders and legislative parts/sections/subsections/schedules. Source-specific adapters implement the same interface. It extracts only labelled values actually present, with offsets and origin (`parser`/`deterministic`), confidence and unreviewed state. Missing values remain missing. Human verification is a separate append-only decision. No inferred court, date, treatment or title becomes verified fact. A title is required before corpus creation; parsing ambiguity creates review work.
+`ArtifactStorage` is a port with `put` and `get` and **no URL method**: protected objects are never addressable from outside. The development adapter (`LocalArtifactStorage`) stores flat objects named `corpus-<sourceId>-<sha256>` under a `0700` root, opens with `O_NOFOLLOW`, writes a temporary file and links it into place (no overwrite), and re-verifies the checksum on every read. Source-supplied file names are never paths. `LocalInboxAcquirer` reads only `<sourceId>-<inputReference>` from a separately provisioned inbox; the request carries an opaque reference, never a path or URL.
 
-Citation candidates carry literal text, offsets and evidence passage. Only explicitly resolved targets produce Stage 4 `cites` machine edges; unresolved citations remain reviewable candidates. No legal-treatment inference. Concept hooks must carry evidence; no taxonomy or AI is introduced.
+The raw artifact is preserved exactly, SHA-256 verified on write and on each run, even when nothing can be made of it (a PDF, a corrupt file). Objects are immutable and idempotent: the same bytes under the same source are the same object.
 
-## Validation and security
+## 6. Extraction
 
-Validate source/jurisdiction, required rights, bounded input, SHA-256, artifact/version identity, required title, passage ordering/hashes, and citation/metadata substrings in exact extraction/passages. Enforce artifact/version linkage, immutable processing evidence and review handoff in SQL. App has no ingestion schema access; ingest/dataops retain no tenant access. Protected objects have no public URLs. Local storage uses generated flat names, restrictive permissions, exclusive atomic writes and symlink refusal; filenames supplied by sources are never paths. Acquisition accepts only source-scoped opaque references from a separately provisioned public-corpus inbox.
+`TextExtractor` is a port. `BasicTextExtractor` handles:
 
-Untrusted text is data, including any future prompt-like instructions. No evaluation, script execution, parser network access or content in logs. Production entry points run the synthetic-fixture guard; startup also checks the runtime database role. Errors are fixed safe categories, never raw driver/parser exceptions.
+- **Plain text:** strict UTF-8 (invalid bytes are refused, never guessed), line endings normalised, NFC, tabs and non-breaking spaces collapsed, control characters refused.
+- **HTML:** parsed as data with `parse5`; scripts, styles, frames, embedded objects, templates and comments are never extracted; text a reader cannot see (`hidden`, `display:none`, `visibility:hidden`) is dropped **and reported** (`html_hidden_content_dropped`). An ordinary `style` attribute is not a reason to drop text. Traversal is iterative and node-bounded, so deep nesting and markup bombs end in a typed failure.
+- **PDF:** refused as `unsupported_format` (a reviewable outcome). An isolated PDF worker and an `OcrExtractor` port are the extension points; OCR is never an automatic default.
 
-## Review, audit and observability
+Bidirectional overrides and zero-width characters are kept (removing them would alter the source) and reported. Output carries an extractor version, a quality score (share of letters and digits, a signal for the reviewer, not a claim of accuracy) and warnings. Limits: 4 MiB per artifact, 1,000,000 characters of text.
 
-Review packet exposes source/rights evidence reference, artifact reference and checksum, extracted text, derived metadata, passages, candidates, warnings and failure categories to data-ops only. Decisions are append-only with authenticated actor context; acceptance controls corpus approval, never publication. Separate publisher permission and the existing two-person rule remain. Successful stage and review events commit with their records in `audit.platform_events`; failures are recorded in a separate transaction after rollback. Logs/traces use only job/correlation ids, stage, elapsed time, attempt and category.
+## 7. Parsing and passages
 
-## Validation strategy
+`DocumentParser` is a port keyed by a parser id; source-specific adapters implement it, so Ghana-specific logic never enters the generic pipeline. The one built parser, `labelled-v1`, is for **controlled and synthetic sources**: one passage per non-empty line, a locator of `page:N/<section>/paragraph:X` (form feeds advance the page), metadata only from explicit `Label: value` lines, citations only from explicit `Cites: <identifier>` labels. It guesses nothing; a missing value stays missing. It is not a judgment or legislation parser.
 
-Unit: schemas, extraction, segmentation determinism, citation evidence, failure classification, local storage/acquisition attacks. PostgreSQL: complete synthetic pipeline from a clean database; rights denied/revoked/expired/purpose separation; retry/concurrency/deduplication; immutable evidence and version linkage; role/tenant isolation; lifecycle/review; production guard. Disable selected protections temporarily and require targeted tests to fail, then restore. Run format, lint, typecheck, dependency rules, all unit/integration tests, audit, secret scan, migration history validation, fresh migrations and production guard. Record actual results and limits in the runbook/status; do not claim a PDF/OCR worker, network connector, search, AI or admin UI exists.
+Passages are deterministic (same input, same output), bounded (4,000 per document, 8,000 characters per line) and hashed by the database. All offsets count Unicode code points, matching PostgreSQL. There are no embeddings.
+
+## 8. Provenance and evidence
+
+Every derived field is evidence: value, exact quote, start and end offsets into the extracted text, origin (`parser`, `deterministic` or `machine`), confidence and review state. **The database refuses any review state but `unreviewed`** at ingestion, so machine output can never present itself as verified. Each check is written as "provably true or fail", so a missing key cannot pass as NULL.
+
+The database verifies that: the stored text is the text that was hashed; a version's source, jurisdiction, checksum, storage key, acquisition time and pipeline version equal the artifact's; every quote is the text at its offsets; every passage is the extracted text at its offsets; every citation quote is the text inside its passage. Evidence tables are append-only, even against a superuser.
+
+## 9. Citations
+
+Ingestion produces plain citation **candidates** with literal text, offsets and the passage that contains them. A candidate resolves to an existing work only when the identifier is known to the same source and unambiguous, never to the citing document itself; the edge is a machine `cites` edge marked `unreviewed`, pointing at a passage in the citing version (Stage 4 enforces that). Anything else stays an unresolved candidate. Treatment (overruled, distinguished, followed) is never inferred; treatments stay hidden until a person has reviewed them.
+
+## 10. Deduplication
+
+Prefers a person's decision to a merge. A job stops in review with candidate ids when: the same content (SHA-256) exists in the jurisdiction in a version that was not rejected; another source has already identified the same identifier; or another work has the same normalised title. The same source and identifier with new content becomes a **new version** of the known work. A rejected version does not block ingesting the same bytes again.
+
+## 11. Failure taxonomy
+
+Every failure ends in one fixed category, with a fixed message (`Ingestion stopped: <category>.`). Raw exception text never reaches a user, a job row, an audit record or a log.
+
+| Category                 | Class     | Typical cause                                                        |
+| ------------------------ | --------- | -------------------------------------------------------------------- |
+| `rights_denied`          | terminal  | rights not in force for this operation                               |
+| `acquisition_failed`     | retryable | the source object is not there yet                                   |
+| `storage_failed`         | retryable | a transient database or storage fault (connection, rollback, resources, shutdown) |
+| `integrity_failed`       | terminal  | bytes do not match the expected SHA-256, or stored bytes changed     |
+| `unsupported_format`     | review    | PDF (until an isolated extractor exists)                             |
+| `extraction_failed`      | terminal  | not UTF-8, control characters, markup bomb                           |
+| `extraction_quality_low` | review    | too little real text                                                 |
+| `parse_failed`           | review    | no passages, too many, a line that is not a passage                  |
+| `metadata_invalid`       | review    | no title, or a label given twice                                     |
+| `duplicate_detected`     | review    | candidates exist; a person decides                                   |
+| `validation_failed`      | terminal  | evidence does not match the text; hand-off incomplete                |
+| `input_invalid`          | terminal  | request refused (unknown parser, wrong actor, tenant present)        |
+| `internal_error`         | terminal  | anything unrecognised. Visible, never retried blindly                |
+
+## 12. Retry, idempotency and concurrency
+
+- A request has a caller idempotency key, unique per source, with a checksum of its content: the same key and request returns the same job; the same key with different content is refused.
+- At most three attempts, with linear backoff. Only `acquisition_failed` and `storage_failed` run again. A job abandoned by a worker that died on its last attempt is closed as `internal_error` instead of staying `running` for good.
+- A job is serialised by a session advisory lock (no transaction is held across IO); a second worker skips it. Identity decisions are serialised per jurisdiction and document type, so two documents claiming the same identity produce one work with two versions.
+- A retry resumes from durable checkpoints: the artifact and the extraction are never redone.
+- **Requires a direct PostgreSQL connection**, not transaction-pooling mode (session locks).
+
+## 13. Review workflow
+
+A review task is created for every job that stops for a person: `validation_complete` (a version is ready) or a review-class failure (no version). A reviewer with `ingestion:inspect` reads a packet (source, rights evidence, artifact, extraction, metadata, passages, candidates, warnings, current-rights flag). A reviewer with `corpus:review` decides `approve`, `reject` or `hold`, with a machine-readable reason code and no free text.
+
+`IngestionReview.decide` runs in one transaction: it records the decision in the corpus (`corpus.version_review_decisions`, append-only), performs the transition, records the ingestion disposition referencing the corpus decision, and audits by id. The corpus refuses approval unless the latest decision is an approval by the approver. A hold keeps the task open; the first approve or reject closes it; a task with no version (a failure or a duplicate) can be rejected or held, never approved. Approving is a separate act from publishing, held by a different role (`corpus:publish`) and a different person (the Stage 4 two-person rule).
+
+## 14. Security boundaries
+
+- **Public and private are separate.** The corpus, ingestion and graph schemas have no tenant column and no reference to a tenant table; the corpus source kinds cannot describe private material; the ingestion request carries no tenant, path, URL or storage key; the application role has no access to `ingestion`. Private tenant document ingestion is not built; if it ever is, it is a separate tenant-scoped design that never writes to the corpus.
+- **Least privilege.** The ingestion role writes evidence and drafts, cannot record a review decision, approve, publish, edit rights or read the operator audit trail. Data-ops decides but cannot run or alter jobs. See [database-privileges.md](database-privileges.md).
+- **Untrusted input.** Bounded size; strict UTF-8; no evaluation; no network access from a parser; no path from source-supplied names; hidden text dropped and reported (a known route for smuggling instructions to a machine reader); log fields are ids, counts and categories only. Extracted text is data. Nothing in this stage passes it to a model; when one does (Stage 7) it must treat the text as data and keep instructions out of it.
+- **Entry points fail closed.** Both the pipeline and review check the runtime role and refuse to run in production while any synthetic authority exists.
+- **`SECURITY DEFINER`** is inventoried, enforced by guardrails and listed in the review document. Ingestion has none.
+
+## 15. Observability and audit
+
+Structured logs carry job id, correlation id, stage, attempt, duration, category and a SQLSTATE or code, never content. Spans wrap each run; a counter and a duration histogram record outcomes by category (OpenTelemetry API; they are exported when the host application configures an SDK). `ingestion.stage_events` keeps one record per stage per attempt, with the rights decision it relied on. `audit.platform_events` records request, each stage, review decisions, and refusals (outcome `denied`), with identifiers and safe metadata only. Audit for publication, withdrawal and rights changes belongs to the API layer (ADR-0006).
+
+## 16. Adapters and extension points
+
+| Port                                        | Built                                             | To add                                                       |
+| ------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------ |
+| `ArtifactStorage`                           | local development adapter                         | S3-compatible object store                                   |
+| `SourceAcquirer`                            | local inbox                                       | connectors per source, after rights are settled              |
+| `TextExtractor`                             | plain text, HTML                                  | isolated PDF worker                                          |
+| `OcrExtractor`                              | port only                                         | isolated OCR worker, invoked after an explicit human decision |
+| `DocumentParser`                            | `labelled-v1` (controlled and synthetic sources)  | Ghanaian judgment and legislation parsers, from real samples |
+| `IngestionStore`                            | PostgreSQL                                        |                                                              |
+| Concept hooks (`ParsedDocument.concepts`)   | always empty                                      | evidence-carrying adapters                                   |
+
+## 17. Known limits
+
+PDF and OCR are not implemented. There is no Ghanaian parser and no pattern-based citation detection, because both need verified sources and conventions that have not been provided. A review-class failure cannot be resumed by a person; the remedy is a new job. Artifacts above 4 MiB are refused. There is no worker daemon, only `runReady`. Raw artifacts of a revoked source are retained. Full details, and what was deferred and why, are in the [review document](../reviews/stage-5-existing-implementation-review.md).

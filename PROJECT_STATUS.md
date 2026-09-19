@@ -48,4 +48,7 @@ The technical foundation is being built in stages around the planning docs, with
 | 2 Database foundation | Done |
 | 3 Identity, tenancy, permissions, audit | Done |
 | 4 Legal-data foundation | Done |
-| 5 Ingestion core + tenant workspace | Not started |
+| 5 Ingestion core (public corpus) | Built on `stage-5/legal-ingestion`; in review, not merged |
+| 5b Tenant workspace | Not started (not part of the ingestion stage) |
+
+Stage 5 ingests **synthetic and controlled-source text and HTML** into the corpus as versions awaiting human review, with rights checked at every step. It does not yet include PDF or OCR extraction, a Ghanaian judgment or legislation parser, pattern-based citation detection, a worker process, an API or any UI, and no real legal source or Ghanaian reference data has been acquired. Ingestion never approves or publishes. See [`docs/architecture/stage-5-ingestion.md`](docs/architecture/stage-5-ingestion.md), [`docs/runbooks/ingestion.md`](docs/runbooks/ingestion.md) and [`docs/reviews/stage-5-existing-implementation-review.md`](docs/reviews/stage-5-existing-implementation-review.md).

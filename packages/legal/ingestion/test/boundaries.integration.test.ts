@@ -24,7 +24,11 @@ const count = async (sql: string, params: readonly unknown[] = []): Promise<numb
  * write and see whether the database refuses it. Every negative test ends with the same insert
  * succeeding when the evidence is right, so a refusal is about the evidence and not the setup.
  */
-async function handRolled(w: World, title = unique('Hand rolled')) {
+async function handRolled(
+  w: World,
+  title = unique('Hand rolled'),
+  options: { extract?: boolean } = {},
+) {
   const content = syntheticDocument(title, { identifier: unique('SYN/HAND') });
   const request = h.prepare(w, content);
   const requested = await h.pipeline().request(h.operator(), request);
@@ -44,7 +48,7 @@ async function handRolled(w: World, title = unique('Hand rolled')) {
     quality: 1,
     warnings: [],
   };
-  await store.saveExtraction(job, artifact, extraction, 1);
+  if (options.extract !== false) await store.saveExtraction(job, artifact, extraction, 1);
   const parsed = labelledParser.parse(extraction, request);
 
   const { documentId, versionId } = await h.asIngest(async (tx) => {
@@ -174,6 +178,21 @@ describe('the database refuses evidence the pipeline would never write', () => {
         hand.versionId,
       ]),
     ).toBe(1);
+  });
+
+  it('verifies in the database that the stored text is the text that was hashed', async () => {
+    const hand = await handRolled(await h.world(), undefined, { extract: false });
+    const insert = (checksum: string) =>
+      h.asIngest((tx) =>
+        tx.query(
+          `INSERT INTO ingestion.extractions(job_id, artifact_id, extractor_version, text, text_checksum, quality, warnings)
+           VALUES ($1, $2, 'test', $3, $4, 1, '{}')`,
+          [hand.job.id, hand.artifact.id, hand.extraction.text, checksum],
+        ),
+      );
+    await expect(insert(hash('some other text'))).rejects.toMatchObject({ code: '23514' });
+    await expect(insert('not-a-checksum')).rejects.toMatchObject({ code: '23514' });
+    await insert(hash(hand.extraction.text));
   });
 
   it('rejects a version whose provenance does not match the artifact it claims to come from', async () => {

@@ -37,3 +37,6 @@
 ## Engineering (implementation layer)
 - [25_IMPLEMENTATION_PLAN.md](25_IMPLEMENTATION_PLAN.md)
 - [Architecture Decision Records](adr/README.md)
+- [Stage 5: legal ingestion architecture](architecture/stage-5-ingestion.md)
+- [Runbook: legal ingestion](runbooks/ingestion.md)
+- [Review of the existing Stage 5 implementation](reviews/stage-5-existing-implementation-review.md)
