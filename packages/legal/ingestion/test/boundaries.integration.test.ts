@@ -478,11 +478,15 @@ describe('review is a person deciding, recorded in the corpus and in ingestion',
       versionId: VersionId.parse(job.versionId ?? ''),
     };
   };
-  const decide = (
+  const decide = async (
     taskId: string,
     decision: 'approve' | 'reject' | 'hold',
     reasonCode = 'checked',
-  ) => h.review().decide(h.reviewer(), { taskId, decision, reasonCode });
+  ) => {
+    // Approval needs the publish-critical metadata verified by a person (corpus 0004).
+    if (decision === 'approve') await h.verifyCritical(taskId);
+    return h.review().decide(h.reviewer(), { taskId, decision, reasonCode });
+  };
 
   it('is not open to staff who were not given the permission', async () => {
     const { taskId } = await pendingJob();
@@ -666,6 +670,7 @@ describe('review is a person deciding, recorded in the corpus and in ingestion',
       [
         'artifact',
         'citations',
+        'criticalMetadata',
         'currentProcessingAllowed',
         'decisions',
         'extraction',
@@ -680,6 +685,24 @@ describe('review is a person deciding, recorded in the corpus and in ingestion',
     expect(before['currentProcessingAllowed']).toBe(true);
     expect(before['rightsEvidence']).toBe('SYNTHETIC-EVIDENCE');
     expect((before['passages'] as unknown[]).length).toBeGreaterThan(0);
+    // The reviewer is shown what a person must verify, with the fingerprint to quote.
+    const critical = before['criticalMetadata'] as {
+      field: string;
+      blocking: boolean;
+      valueSha256: string;
+    }[];
+    expect(critical.map((row) => row.field).sort()).toEqual([
+      'instrument_number',
+      'jurisdiction',
+      'title',
+    ]);
+    expect(
+      critical
+        .filter((row) => row.blocking)
+        .map((row) => row.field)
+        .sort(),
+    ).toEqual(['jurisdiction', 'title']);
+    expect(critical.find((row) => row.field === 'title')?.valueSha256).toMatch(/^[a-f0-9]{64}$/);
 
     await h.revoke(w.sourceId);
     expect((await h.review().packet(h.reviewer(), taskId))['currentProcessingAllowed']).toBe(false);

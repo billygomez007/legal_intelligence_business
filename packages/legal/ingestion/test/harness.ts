@@ -258,6 +258,30 @@ export async function createHarness() {
     return p.run(requested.id);
   }
 
+  /**
+   * What a careful reviewer does before approving: verifies, against the source, every
+   * publish-critical field the corpus holds a value for (approval refuses to proceed otherwise).
+   */
+  const verifyCritical = async (taskId: string): Promise<void> => {
+    const packet = await review().packet(reviewer(), taskId);
+    const rows = packet['criticalMetadata'] as {
+      field: string;
+      value: string | null;
+      valueSha256: string | null;
+      blocking: boolean;
+    }[];
+    const verifications = rows
+      .filter((row) => row.blocking && row.value !== null && row.valueSha256 !== null)
+      .map((row) => ({
+        field: row.field,
+        status: 'verified',
+        valueSha256: row.valueSha256,
+        evidenceReference: 'SYNTHETIC: read against the source text',
+      }));
+    if (verifications.length > 0)
+      await review().verifyMetadata(reviewer(), { taskId, verifications });
+  };
+
   const taskFor = async (jobId: string): Promise<string> => {
     const rows = await q<{ id: string }>(
       'SELECT id FROM ingestion.review_tasks WHERE job_id = $1',
@@ -316,6 +340,7 @@ export async function createHarness() {
     secondSource,
     prepare,
     ingestDocument,
+    verifyCritical,
     taskFor,
     expireBackoff,
     async dispose() {

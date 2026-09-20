@@ -170,6 +170,7 @@ Reviewing a migration? A change to this file is a change to what a role can do.
 | `corpus.case_details` | INSERT, SELECT, UPDATE |
 | `corpus.court_lineage` | INSERT, SELECT |
 | `corpus.courts` | INSERT, SELECT |
+| `corpus.critical_metadata_fields` | SELECT |
 | `corpus.document_versions` | SELECT |
 | `corpus.jurisdictions` | INSERT, SELECT |
 | `corpus.legal_documents` | SELECT |
@@ -178,6 +179,7 @@ Reviewing a migration? A change to this file is a change to what a role can do.
 | `corpus.passages` | SELECT |
 | `corpus.source_rights_decisions` | INSERT, SELECT |
 | `corpus.sources` | INSERT, SELECT |
+| `corpus.version_field_verifications` | SELECT |
 | `corpus.version_review_decisions` | INSERT, SELECT |
 | `graph.citations` | INSERT, SELECT |
 | `graph.relationship_types` | SELECT |
@@ -201,6 +203,12 @@ Reviewing a migration? A change to this file is a change to what a role can do.
 | `corpus.document_versions.published_by` | UPDATE |
 | `corpus.document_versions.withdrawal_reason` | UPDATE |
 | `corpus.legal_documents.title` | UPDATE |
+| `corpus.version_field_verifications.evidence_reference` | INSERT |
+| `corpus.version_field_verifications.field` | INSERT |
+| `corpus.version_field_verifications.status` | INSERT |
+| `corpus.version_field_verifications.value_sha256` | INSERT |
+| `corpus.version_field_verifications.verified_by` | INSERT |
+| `corpus.version_field_verifications.version_id` | INSERT |
 | `graph.citations.review_status` | UPDATE |
 | `graph.citations.reviewed_at` | UPDATE |
 | `graph.citations.reviewed_by` | UPDATE |
@@ -211,7 +219,11 @@ Reviewing a migration? A change to this file is a change to what a role can do.
 | --- | --- |
 | `app.current_org_id()` | EXECUTE |
 | `app.current_user_id()` | EXECUTE |
+| `corpus.field_fingerprint()` | EXECUTE |
 | `corpus.has_reviewed_version()` | EXECUTE |
 | `corpus.rights_decision_in_force()` | EXECUTE |
 | `corpus.source_allows()` | EXECUTE |
+| `corpus.unverified_critical_fields()` | EXECUTE |
+| `corpus.version_critical_metadata()` | EXECUTE |
+| `corpus.version_field_value()` | EXECUTE |
 | `ingestion.current_rights()` | EXECUTE |

@@ -149,6 +149,7 @@ describe('the pipeline, end to end, on synthetic documents', () => {
     const versionId = VersionId.parse(job.versionId ?? '');
     const taskId = await h.taskFor(job.id);
 
+    await h.verifyCritical(taskId); // a person verifies the publish-critical metadata first
     await h.review().decide(h.reviewer(), {
       taskId,
       decision: 'approve',

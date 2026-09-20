@@ -28,7 +28,7 @@ import {
   type SourceId,
   type VersionId,
 } from '../src';
-import { seedSyntheticCorpus } from '../src/testing';
+import { seedSyntheticCorpus, verifyForApproval } from '../src/testing';
 
 let database: TestDatabase;
 let ingest: DbPool;
@@ -154,8 +154,13 @@ async function draft(
 
 const submit = (versionId: VersionId) =>
   asIngest((tx) => corpusStore.submitForReview(tx, versionId));
-const approve = (versionId: VersionId, by = staff.reviewer) =>
-  asDataops((tx) => corpusStore.approveVersion(tx, versionId, by));
+// Approval now needs the publish-critical metadata verified by a person (corpus 0004), so this
+// does what a reviewer does first. A version that is not awaiting review is left alone, so the
+// tests of what happens then still meet the database's own refusal.
+const approve = async (versionId: VersionId, by = staff.reviewer) => {
+  await verifyForApproval({ dataops }, versionId, staff.reviewer);
+  return asDataops((tx) => corpusStore.approveVersion(tx, versionId, by));
+};
 const publish = (versionId: VersionId, by = staff.publisher) =>
   asDataops((tx) => corpusStore.publishVersion(tx, versionId, by));
 
@@ -1293,6 +1298,7 @@ describe('review integrity: who approved and published cannot be rewritten', () 
         decidedBy: staff.reviewer,
       }),
     );
+    await verifyForApproval({ dataops }, d.versionId, staff.reviewer); // the metadata gate (0004)
     await admin((c) =>
       c.query(
         `UPDATE corpus.document_versions
@@ -1548,6 +1554,7 @@ describe('review decisions gate approval', () => {
   it('accepts approval once the approver has recorded an approving decision', async () => {
     const { d } = await pending();
     await decide(d.versionId, 'approve');
+    await verifyForApproval({ dataops }, d.versionId, staff.reviewer); // the metadata gate (0004)
     await forceApprove(d.versionId, staff.reviewer);
   });
 

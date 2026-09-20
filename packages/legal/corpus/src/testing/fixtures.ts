@@ -9,6 +9,7 @@ import type {
   SourceId,
   VersionId,
 } from '../domain/ids';
+import { verifyForApproval } from './trust';
 
 /**
  * A small, obviously fake corpus for tests. Everything is labelled SYNTHETIC in its name and
@@ -141,6 +142,8 @@ export async function seedSyntheticCorpus(
       return { documentId, versionId, passageIds: passages.rows.map((row) => row.id) };
     });
 
+    // The approval gate needs the critical metadata verified by a person first.
+    await verifyForApproval({ dataops: pools.dataops }, draft.versionId, staff.reviewer);
     await withPublicTransaction(pools.dataops, async (tx) => {
       await corpusStore.approveVersion(tx, draft.versionId, staff.reviewer);
       await corpusStore.publishVersion(tx, draft.versionId, staff.publisher);
