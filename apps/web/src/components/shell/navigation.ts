@@ -1,5 +1,6 @@
 import {
   Bell,
+  CreditCard,
   FolderOpen,
   LayoutDashboard,
   Library,
@@ -38,6 +39,7 @@ export const primaryNavigation: readonly NavItem[] = [
 
 export const secondaryNavigation: readonly NavItem[] = [
   { href: routes.organization, label: 'Organization', icon: Users },
+  { href: routes.billing, label: 'Billing & Subscription', icon: CreditCard },
   { href: routes.settings, label: 'Settings', icon: Settings },
 ];
 

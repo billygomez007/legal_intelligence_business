@@ -50,10 +50,15 @@ describe('LexGhana application shell', () => {
       'Library',
       'Alerts',
       'Organization',
+      'Billing & Subscription',
       'Settings',
     ]);
     expect(primaryNavigation).toHaveLength(6);
-    expect(secondaryNavigation.map((item) => item.label)).toEqual(['Organization', 'Settings']);
+    expect(secondaryNavigation.map((item) => item.label)).toEqual([
+      'Organization',
+      'Billing & Subscription',
+      'Settings',
+    ]);
   });
 
   it('shows the user block and the brand line', async () => {
@@ -126,7 +131,7 @@ describe('mobile navigation', () => {
     await user.click(trigger);
     const dialog = screen.getByRole('dialog', { name: 'Workspace navigation' });
     const nav = within(dialog).getByRole('navigation', { name: 'Main navigation' });
-    expect(within(nav).getAllByRole('link')).toHaveLength(8);
+    expect(within(nav).getAllByRole('link')).toHaveLength(9);
     expect(within(dialog).getByRole('button', { name: 'Close navigation' })).toBeDefined();
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).toBeNull();

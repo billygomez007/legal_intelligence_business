@@ -17,6 +17,7 @@ export const routes = {
   research: '/app/research',
   library: '/app/library',
   alerts: '/app/alerts',
+  billing: '/app/billing',
   organization: '/app/organization',
   settings: '/app/settings',
 
