@@ -23,6 +23,7 @@ export default async function ResearchPage() {
           </button>
         }
       />
+      <h2 className="sr-only">Projects</h2>
       {projects.length ? (
         <div className="project-grid">
           {projects.map((project) => (

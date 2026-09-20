@@ -9,12 +9,19 @@ import { CitationChip } from './citation';
 import { LayerPanel } from './layer';
 
 /** One passage of primary source text. Serif, with its locator and version, and an anchor target. */
-export function SourcePassage({ passage }: { passage: Passage }) {
+export function SourcePassage({
+  passage,
+  anchor = true,
+}: {
+  passage: Passage;
+  /** Set false when the same passage is already anchored elsewhere on the page. */
+  anchor?: boolean;
+}) {
   return (
     <LayerPanel
       layer="source"
       detail="synthetic fixture"
-      id={passage.id}
+      {...(anchor ? { id: passage.id } : {})}
       className="source-passage"
     >
       <p className="passage-locator">{passage.locator}</p>
@@ -26,13 +33,19 @@ export function SourcePassage({ passage }: { passage: Passage }) {
   );
 }
 
-export function PassageViewer({ source }: { source: SourceReference }) {
+export function PassageViewer({
+  source,
+  anchors = true,
+}: {
+  source: SourceReference;
+  anchors?: boolean;
+}) {
   if (source.authority.rights !== 'available')
     return <Unavailable restricted={source.authority.rights === 'restricted'} />;
   return (
     <div className="stack">
       {source.passages.map((passage) => (
-        <SourcePassage key={passage.id} passage={passage} />
+        <SourcePassage key={passage.id} passage={passage} anchor={anchors} />
       ))}
     </div>
   );
@@ -54,7 +67,7 @@ export function SourceCard({ source }: { source: SourceReference }) {
         <VerificationBadge state={authority.verification} />
         <RightsBadge state={authority.rights} />
       </div>
-      <PassageViewer source={source} />
+      <PassageViewer source={source} anchors={false} />
       <Link className="text-link" href={routes.source(source.documentId)}>
         Open source document <ArrowUpRight size={14} aria-hidden="true" />
       </Link>

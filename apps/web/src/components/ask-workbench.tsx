@@ -83,6 +83,7 @@ export function AskWorkbench({
       <LayerLegend />
       <div className="reading-layout">
         <div className="reading-main">
+          <h2 className="sr-only">Answer</h2>
           {showExample ? (
             <LegalAnswer answer={answer} />
           ) : (

@@ -27,6 +27,7 @@ export function ListPanel({
         {href && (
           <Link className="text-link subtle" href={href}>
             {linkLabel}
+            <span className="sr-only"> {title.toLowerCase()}</span>
             <ArrowRight size={14} aria-hidden="true" />
           </Link>
         )}

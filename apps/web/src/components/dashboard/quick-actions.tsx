@@ -32,6 +32,7 @@ export function QuickActions({ actions, href }: { actions: QuickAction[]; href: 
         </h2>
         <Link className="text-link subtle" href={href}>
           View all
+          <span className="sr-only"> quick actions</span>
           <ArrowRight size={14} aria-hidden="true" />
         </Link>
       </div>

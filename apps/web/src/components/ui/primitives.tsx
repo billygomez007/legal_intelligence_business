@@ -42,6 +42,7 @@ export function SectionHeading({
       {href && (
         <Link className="text-link" href={href}>
           {link}
+          <span className="sr-only"> {title.toLowerCase()}</span>
           <ArrowUpRight size={15} aria-hidden="true" />
         </Link>
       )}

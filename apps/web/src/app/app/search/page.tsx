@@ -73,6 +73,7 @@ export default async function SearchPage({
             </Link>
           </aside>
           <section aria-label="Search results" className="search-results">
+            <h2 className="sr-only">Results</h2>
             <div className="results-bar">
               <p className="results-label">
                 {results.length} demonstration {results.length === 1 ? 'result' : 'results'} · Local
