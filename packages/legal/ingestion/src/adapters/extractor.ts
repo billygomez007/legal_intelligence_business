@@ -1,4 +1,4 @@
-import { parse, type DefaultTreeAdapterTypes } from 'parse5';
+import { Worker } from 'node:worker_threads';
 
 import {
   IngestionFailure,
@@ -9,45 +9,6 @@ import {
   type MediaType,
 } from '../domain/model';
 import type { TextExtractor } from '../ports/pipeline';
-
-/** Elements that never carry document text. Dropping them is not content loss. */
-const DROP = new Set([
-  'script',
-  'style',
-  'template',
-  'noscript',
-  'iframe',
-  'object',
-  'embed',
-  'svg',
-  'math',
-  'head',
-]);
-const BLOCK = new Set([
-  'p',
-  'div',
-  'section',
-  'article',
-  'h1',
-  'h2',
-  'h3',
-  'h4',
-  'li',
-  'tr',
-  'br',
-  'hr',
-  'pre',
-]);
-
-/**
- * Only markup that hides content from a reader. An arbitrary `style` attribute is NOT a reason
- * to drop an element: legal HTML routinely carries `style="text-align:center"` on real text,
- * and dropping it would silently lose part of the document.
- */
-const HIDING_STYLE =
-  /(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden)\s*(?:!important\s*)?(?:;|$)/i;
-const isHidden = (node: DefaultTreeAdapterTypes.Element): boolean =>
-  node.attrs.some((a) => a.name === 'hidden' || (a.name === 'style' && HIDING_STYLE.test(a.value)));
 
 /**
  * Characters that can make displayed text differ from stored text (bidirectional overrides,
@@ -91,38 +52,58 @@ function survey(text: string): CharacterSurvey {
   return result;
 }
 
-function htmlText(input: string): { text: string; hiddenDropped: boolean } {
-  const root = parse(input);
-  const output: string[] = [];
-  let hiddenDropped = false;
-  // Iterative traversal bounds call-stack use on adversarial deeply nested markup.
-  const stack: { node: DefaultTreeAdapterTypes.Node; end: boolean }[] = [
-    { node: root, end: false },
-  ];
-  let nodes = 0;
-  while (stack.length > 0) {
-    const item = stack.pop();
-    if (item === undefined) break;
-    const { node, end } = item;
-    if (++nodes > 100_000) throw new IngestionFailure('extraction_failed');
-    if ('tagName' in node) {
-      if (DROP.has(node.tagName)) continue;
-      if (isHidden(node)) {
-        // Hidden text is a known way to smuggle instructions to a machine reader, so it is
-        // not extracted, and its presence is reported rather than passed over silently.
-        hiddenDropped = true;
-        continue;
+/**
+ * Tree-building HTML parsing is CPU-bound and, on hostile markup, quadratic: measured on this
+ * code, 1.3 MB of table cells took about 11 seconds and a single tag with 100,000 attributes
+ * about 20. A synchronous parse cannot be interrupted, and a worker frozen on one document
+ * holds its job lock and starves every other job. So the parse runs in a worker thread with a
+ * deadline and a memory ceiling; on either, the thread is terminated and the document ends as a
+ * typed `extraction_failed`.
+ */
+export const HTML_EXTRACTION_TIMEOUT_MS = 10_000;
+
+interface HtmlTextResult {
+  ok: boolean;
+  text?: string;
+  hiddenDropped?: boolean;
+}
+
+function htmlText(
+  input: string,
+  timeoutMs: number,
+): Promise<{ text: string; hiddenDropped: boolean }> {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL('./html-text-worker.mjs', import.meta.url), {
+      workerData: { input },
+      resourceLimits: { maxOldGenerationSizeMb: 256, maxYoungGenerationSizeMb: 32, stackSizeMb: 4 },
+    });
+    let settled = false;
+    const finish = (outcome: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      void worker.terminate();
+      outcome();
+    };
+    const fail = () => {
+      finish(() => {
+        reject(new IngestionFailure('extraction_failed'));
+      });
+    };
+    const timer = setTimeout(fail, timeoutMs);
+    worker.once('message', (result: HtmlTextResult) => {
+      if (result.ok && result.text !== undefined) {
+        const value = { text: result.text, hiddenDropped: result.hiddenDropped === true };
+        finish(() => {
+          resolve(value);
+        });
+      } else {
+        fail();
       }
-      if (BLOCK.has(node.tagName)) output.push('\n');
-    }
-    if (end) continue;
-    if ('value' in node) output.push(node.value);
-    if ('childNodes' in node) {
-      stack.push({ node, end: true });
-      for (const child of node.childNodes.toReversed()) stack.push({ node: child, end: false });
-    }
-  }
-  return { text: output.join(''), hiddenDropped };
+    });
+    worker.once('error', fail);
+    worker.once('exit', fail); // exited without a message: crashed, out of memory or terminated
+  });
 }
 
 /**
@@ -130,18 +111,24 @@ function htmlText(input: string): { text: string; hiddenDropped: boolean } {
  * crash): extracting a PDF safely needs an isolated worker, which is a separate decision.
  */
 export class BasicTextExtractor implements TextExtractor {
+  constructor(private readonly options: { htmlTimeoutMs?: number } = {}) {}
+
   /** Rejects, never throws synchronously: callers of a port may rely on the promise alone. */
-  extract(bytes: Uint8Array, mediaType: MediaType): Promise<Extraction> {
-    try {
-      return Promise.resolve(this.extractSync(bytes, mediaType));
-    } catch (error) {
-      return Promise.reject(
-        error instanceof Error ? error : new IngestionFailure('extraction_failed'),
-      );
+  async extract(bytes: Uint8Array, mediaType: MediaType): Promise<Extraction> {
+    const input = this.decode(bytes, mediaType);
+    const warnings: string[] = [];
+    let extracted = input;
+    if (mediaType === 'text/html') {
+      const html = await htmlText(input, this.options.htmlTimeoutMs ?? HTML_EXTRACTION_TIMEOUT_MS);
+      extracted = html.text;
+      warnings.push('html_layout_not_preserved');
+      if (html.hiddenDropped) warnings.push('html_hidden_content_dropped');
     }
+    return this.normalise(extracted, mediaType, warnings);
   }
 
-  private extractSync(bytes: Uint8Array, mediaType: MediaType): Extraction {
+  /** Size, media type and encoding checks, then the decoded string. */
+  private decode(bytes: Uint8Array, mediaType: MediaType): string {
     if (bytes.byteLength === 0 || bytes.byteLength > MAX_BYTES)
       throw new IngestionFailure('input_invalid');
     if (mediaType === 'application/pdf') throw new IngestionFailure('unsupported_format');
@@ -153,15 +140,10 @@ export class BasicTextExtractor implements TextExtractor {
     }
     if (input.startsWith('%PDF-') || input.includes('\0'))
       throw new IngestionFailure('extraction_failed');
+    return input;
+  }
 
-    const warnings: string[] = [];
-    let extracted = input;
-    if (mediaType === 'text/html') {
-      const html = htmlText(input);
-      extracted = html.text;
-      warnings.push('html_layout_not_preserved');
-      if (html.hiddenDropped) warnings.push('html_hidden_content_dropped');
-    }
+  private normalise(extracted: string, mediaType: MediaType, warnings: string[]): Extraction {
     const text = extracted
       .replace(/\r\n?/g, '\n')
       .replace(/[\t\xa0]+/g, ' ')
@@ -176,7 +158,7 @@ export class BasicTextExtractor implements TextExtractor {
     if (visible < MIN_VISIBLE_CHARACTERS) throw new IngestionFailure('extraction_quality_low');
     return {
       text,
-      extractorVersion: mediaType === 'text/html' ? 'html-parse5-8.0.1-v2' : 'utf8-v1',
+      extractorVersion: mediaType === 'text/html' ? 'html-parse5-8.0.1-v3' : 'utf8-v1',
       quality: Math.min(1, visible / Math.max(1, text.trim().length)),
       warnings,
     };

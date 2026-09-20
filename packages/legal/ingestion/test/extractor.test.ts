@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { BasicTextExtractor, IngestionFailure, MAX_BYTES } from '../src';
+import {
+  BasicTextExtractor,
+  HTML_EXTRACTION_TIMEOUT_MS,
+  IngestionFailure,
+  MAX_BYTES,
+} from '../src';
 import { chr } from './support';
 
 const extractor = new BasicTextExtractor();
@@ -195,5 +200,62 @@ describe('characters that mislead a reader', () => {
 
   it('reports nothing for ordinary text', async () => {
     expect((await extractText(PROSE)).warnings).toEqual([]);
+  });
+});
+
+describe('HTML extraction is bounded in time and never blocks the caller', () => {
+  const html = (body: string) => `<!doctype html><html><body>${body}</body></html>`;
+
+  // Found in independent review: a 1.3 MB run of table cells took about 11 seconds to parse and
+  // 4 MiB of them 142 seconds, on the event loop, holding the job lock the whole time.
+  const hostile = html('<table><td><b>'.repeat(100_000));
+
+  it('ends a document that takes too long as a typed failure, close to the deadline', async () => {
+    const impatient = new BasicTextExtractor({ htmlTimeoutMs: 400 });
+    const started = performance.now();
+    await expect(impatient.extract(bytes(hostile), 'text/html')).rejects.toMatchObject({
+      category: 'extraction_failed',
+    });
+    expect(performance.now() - started).toBeLessThan(3000);
+  }, 20_000);
+
+  it('keeps the calling thread responsive while a hostile document is being parsed', async () => {
+    const impatient = new BasicTextExtractor({ htmlTimeoutMs: 1500 });
+    let longest = 0;
+    let last = performance.now();
+    const beat = setInterval(() => {
+      const now = performance.now();
+      longest = Math.max(longest, now - last);
+      last = now;
+    }, 20);
+    try {
+      await impatient.extract(bytes(hostile), 'text/html').catch(() => undefined);
+      // Let the event loop take a turn before measuring: after a synchronous parse the timer that
+      // was starved would otherwise be cleared before it ever ran, and the gap would go unseen.
+      await new Promise((resolve) => setTimeout(resolve, 60));
+    } finally {
+      clearInterval(beat);
+    }
+    // In-process parsing froze the event loop for the whole parse (seconds).
+    expect(longest).toBeLessThan(500);
+  }, 20_000);
+
+  it('bounds a single tag with an enormous number of attributes too', async () => {
+    const attributes = Array.from({ length: 60_000 }, (_, i) => `a${i}=1`).join(' ');
+    const impatient = new BasicTextExtractor({ htmlTimeoutMs: 400 });
+    const started = performance.now();
+    await impatient
+      .extract(bytes(html(`<div ${attributes}>${PROSE}</div>`)), 'text/html')
+      .catch(() => undefined);
+    expect(performance.now() - started).toBeLessThan(3000);
+  }, 20_000);
+
+  it('still extracts ordinary documents, and the deadline is generous for them', async () => {
+    const result = await new BasicTextExtractor().extract(
+      bytes(html(`<h1>Heading</h1>${`<p>${PROSE}</p>`.repeat(2000)}`)),
+      'text/html',
+    );
+    expect(result.text).toContain(PROSE);
+    expect(HTML_EXTRACTION_TIMEOUT_MS).toBeLessThanOrEqual(15_000);
   });
 });
