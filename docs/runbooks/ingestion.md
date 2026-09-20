@@ -54,7 +54,7 @@ await pipeline.run(job.id);  // or: await pipeline.runReady(10)
 
 ```sh
 # with a local PostgreSQL and the variables from .env.example
-pnpm db:setup                      # creates roles and a database, applies all migrations
+pnpm db:setup                      # creates roles and a database, applies all migrations (APP_ENV must be set: see section 9)
 INGEST_DATABASE_URL=... DATAOPS_DATABASE_URL=... DB_BOOTSTRAP_ADMIN_URL=... \
   pnpm --filter @legalintel/legal-ingestion demo
 ```
@@ -71,8 +71,11 @@ await review.decide(reviewerContext, { taskId, decision: 'approve' | 'reject' | 
 ```
 
 - Read the packet: source and rights evidence, the raw artifact reference and checksum, the extracted text, each metadata field with its quote and offsets, the passages, citation candidates and warnings. **Every field is unreviewed machine or parser output.** Check it against the source.
+- **Verify the publish-critical metadata before approving.** The packet's `criticalMetadata` lists what matters for this kind of document (every document: title and jurisdiction; a case also a court and a decision date; a neutral citation, docket number or legislation identifier when one is recorded). For each field you have checked against the source, call `review.verifyMetadata(reviewerContext, { taskId, verifications: [{ field, status: 'verified' | 'rejected', valueSha256, evidenceReference }] })`, quoting the `valueSha256` shown and saying where you checked it (a page, a registry entry, a gazette reference). Use `rejected` if the value is wrong. A batch is all-or-nothing and is audited by field, never by value.
+- **A case needs its court and date recorded first.** Extraction does not write them. From the source, call `review.recordCaseDetails(reviewerContext, { taskId, courtId, decisionDate: 'YYYY-MM-DD', neutralCitation?, docketNumber? })`, then verify them. Changing a value after it was verified invalidates that verification, so verify it again.
+- **You cannot approve a job you requested**, even if you also hold the reviewer permission (`ingestion.requester_cannot_approve`). Ask another reviewer. You can still reject or hold your own request.
 - `reasonCode` is a short machine-readable code (`^[a-z][a-z0-9_]{0,63}$`), never free text.
-- **Approve** records your decision in the corpus and moves the version to `approved`. It re-checks the rights: if they were withdrawn it is refused with `rights_denied`, and you can still reject. It does not publish.
+- **Approve** records your decision in the corpus and moves the version to `approved`. It re-checks the rights: if they were withdrawn it is refused with `rights_denied`, and you can still reject. It refuses with `validation_failed` while any required critical field is unverified (`corpus.metadata_unverified`) or if provenance was not attested (`corpus.provenance_required`; the pipeline attests every version it hands off, so this means the version did not come from the pipeline). It does not publish.
 - **Hold** leaves the version awaiting review and the task open. **Reject** closes the task; the same bytes can be ingested again later as a new job.
 - A task with no version (a duplicate, a failure) can be rejected or held, never approved.
 - **Publishing** is a separate act by a person holding `corpus:publish`, who must not be the approver, and needs `display` and `index_search` rights.
@@ -134,6 +137,8 @@ SELECT version_id, decision, reason_code, decided_by, decided_at FROM corpus.ver
 - Edit an ingestion or corpus row by hand, or disable a trigger. Records are append-only on purpose; a superuser cannot rewrite them either.
 - Point ingestion at private organisation material, or at a tenant's upload.
 - Approve because a machine field looks right. Machine output is unreviewed until a person has checked it against the source.
+- Verify a field you have not checked, or copy a fingerprint you did not read the value for. A verification says a named person checked that value against a stated source.
+- Approve your own request, from a second account or otherwise. Separation of duties is between people, not accounts.
 - Retry a `rights_denied`, `integrity_failed` or `internal_error` job without understanding why it stopped.
 - Log a review packet, extracted text or a passage. Log identifiers only.
 - Load synthetic fixtures into a production database.
@@ -148,5 +153,7 @@ pnpm check                 # format, typecheck, lint, architecture rules, unit t
 pnpm test:integration      # real PostgreSQL; needs TEST_DATABASE_ADMIN_URL (see packages/platform/db/README.md)
 pnpm audit --audit-level=high
 ```
+
+**`APP_ENV` must be set explicitly** for every migration command (`db:setup`, `db:migrate`, `db:status`, `db:bootstrap`) and must be exactly `development`, `test`, `staging` or `production`. A missing, blank or invalid value is refused (exit code 2) before anything connects; there is no default here, because the value decides whether production safety checks run. (Copying `.env.example` to `.env` sets `development`.)
 
 Migration checks: `pnpm db:setup` on an empty database with `APP_ENV=production` must succeed; `pnpm db:status` with `APP_ENV=production` must fail on a database holding synthetic data. After any change to database privileges, regenerate and review `docs/architecture/database-privileges.md` (`UPDATE_DOCS=1 pnpm exec vitest run --project integration apps/migrate`).
