@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 
-import { getMigrationStatus } from '@legalintel/db';
+import { REQUIRED_ROLES, getMigrationStatus, runMigrations } from '@legalintel/db';
 import {
   checkGuardrails,
   createTestDatabase,
@@ -37,6 +37,27 @@ describe('all migration sets together', () => {
     expect([...new Set(status.map((row) => row.set))]).toEqual(
       allMigrationSets.map((set) => set.name),
     );
+  });
+
+  it('applies the three hardening migrations once, and re-running the whole chain changes nothing', async () => {
+    const status = await database.withMigrator((client) =>
+      getMigrationStatus(client, allMigrationSets),
+    );
+    for (const [set, version] of [
+      ['iam', 2],
+      ['corpus', 4],
+      ['ingestion', 2],
+    ] as const) {
+      expect(
+        status.find((row) => row.set === set && row.version === version)?.state,
+        `${set} ${version}`,
+      ).toBe('applied');
+    }
+    const again = await database.withMigrator((client) =>
+      runMigrations(client, { sets: allMigrationSets, requiredRoles: REQUIRED_ROLES }),
+    );
+    expect(again.applied).toEqual([]);
+    expect(again.alreadyApplied).toBe(status.length);
   });
 
   it('pass every structural guardrail on the combined schema', async () => {
