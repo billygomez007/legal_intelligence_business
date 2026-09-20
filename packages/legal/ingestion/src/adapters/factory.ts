@@ -1,12 +1,13 @@
 import { assertRuntimeRoleIsConstrained, type DbPool } from '@legalintel/db';
-import { assertNoSyntheticInProduction } from '@legalintel/legal-corpus';
+import { assertNoSyntheticInProduction, type KNOWN_ENVIRONMENTS } from '@legalintel/legal-corpus';
 
 import { IngestionPipeline, type PipelineDependencies } from '../application/pipeline';
 import { hash } from './local-storage';
 import { PgIngestionStore } from './pg-store';
 import { IngestionReview } from './review';
 
-type Environment = 'test' | 'development' | 'production';
+/** development, test, staging or production: the same names the corpus guard recognises. */
+type Environment = (typeof KNOWN_ENVIRONMENTS)[number];
 
 /**
  * The checks every entry point runs before acting: the pool is the expected constrained role,

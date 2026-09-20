@@ -1,5 +1,7 @@
+import { APP_ENVIRONMENTS } from '@legalintel/config';
 import { runMigrationCli } from '@legalintel/db';
 import { createTestDatabase, type TestDatabase } from '@legalintel/db/testing';
+import { KNOWN_ENVIRONMENTS } from '@legalintel/legal-corpus';
 import { seedSyntheticCorpus } from '@legalintel/legal-corpus/testing';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -63,6 +65,26 @@ describe('assertProductionSafety', () => {
       await expect(assertProductionSafety(seeded.urlFor('migrator'), env)).resolves.toBeUndefined();
     },
   );
+
+  // An unrecognised value must never read as "not production": that is exactly how a mistyped
+  // or forgotten environment would switch the synthetic-data check off.
+  it.each(['', '   ', 'prod', 'Production', 'PRODUCTION', 'live', 'production '])(
+    'fails closed for an unrecognised environment (%j), even on a database with fixtures',
+    async (env) => {
+      await expect(assertProductionSafety(seeded.urlFor('migrator'), env)).rejects.toThrow(
+        /APP_ENV/,
+      );
+      await expect(assertProductionSafety(clean.urlFor('migrator'), env)).rejects.toThrow(
+        /APP_ENV/,
+      );
+    },
+  );
+});
+
+describe('the corpus guard and the configuration agree on what an environment is', () => {
+  it('accept exactly the same names', () => {
+    expect([...KNOWN_ENVIRONMENTS]).toEqual([...APP_ENVIRONMENTS]);
+  });
 });
 
 describe('the migration CLI applies the after-command hook', () => {

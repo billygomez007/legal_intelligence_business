@@ -1181,6 +1181,22 @@ describe('synthetic data never reaches production', () => {
       await clean.dispose();
     }
   });
+
+  it('does not object to fixtures in staging, which is a named, deliberate environment', async () => {
+    await seedSyntheticCorpus({ ingest, dataops }, staff, { documentCount: 1 });
+    await expect(assertNoSyntheticInProduction(app, 'staging')).resolves.toBeUndefined();
+  });
+
+  // The guard is switched by the environment name, so an unrecognised name must be an error:
+  // reading "prod" or "" as "not production" would switch the check off by typo.
+  it.each(['', '   ', 'prod', 'Production', 'PRODUCTION', 'live', 'production '])(
+    'fails closed for an unrecognised environment (%j)',
+    async (environment) => {
+      await expect(assertNoSyntheticInProduction(app, environment)).rejects.toMatchObject({
+        code: 'corpus.unknown_environment',
+      });
+    },
+  );
 });
 
 describe('structural guardrails', () => {
