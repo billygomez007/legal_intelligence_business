@@ -28,7 +28,7 @@ import {
   type SourceId,
   type VersionId,
 } from '../src';
-import { seedSyntheticCorpus, verifyForApproval } from '../src/testing';
+import { attestForTests, seedSyntheticCorpus, verifyForApproval } from '../src/testing';
 
 let database: TestDatabase;
 let ingest: DbPool;
@@ -37,6 +37,8 @@ let app: DbPool;
 let admin: TestDatabase['withAdmin'];
 
 const staff = { rightsOfficer: '', reviewer: '', publisher: '', other: '' };
+const adminQuery = (sql: string, params: readonly unknown[] = []) =>
+  admin((c) => c.query(sql, params as unknown[]));
 
 type Tx = Parameters<Parameters<typeof withPublicTransaction>[1]>[0];
 const asIngest = <T>(fn: (tx: Tx) => Promise<T>) => withPublicTransaction(ingest, fn);
@@ -159,6 +161,7 @@ const submit = (versionId: VersionId) =>
 // tests of what happens then still meet the database's own refusal.
 const approve = async (versionId: VersionId, by = staff.reviewer) => {
   await verifyForApproval({ dataops }, versionId, staff.reviewer);
+  await attestForTests(adminQuery, versionId);
   return asDataops((tx) => corpusStore.approveVersion(tx, versionId, by));
 };
 const publish = (versionId: VersionId, by = staff.publisher) =>
@@ -1159,7 +1162,9 @@ describe('the citation graph', () => {
 
 describe('synthetic data never reaches production', () => {
   it('is flagged, labelled and refused at startup in production', async () => {
-    const corpus = await seedSyntheticCorpus({ ingest, dataops }, staff, { documentCount: 2 });
+    const corpus = await seedSyntheticCorpus({ ingest, dataops, admin: adminQuery }, staff, {
+      documentCount: 2,
+    });
 
     const first = corpus.documents[0];
     if (first === undefined) throw new Error('the synthetic seed produced no documents');
@@ -1188,7 +1193,7 @@ describe('synthetic data never reaches production', () => {
   });
 
   it('does not object to fixtures in staging, which is a named, deliberate environment', async () => {
-    await seedSyntheticCorpus({ ingest, dataops }, staff, { documentCount: 1 });
+    await seedSyntheticCorpus({ ingest, dataops, admin: adminQuery }, staff, { documentCount: 1 });
     await expect(assertNoSyntheticInProduction(app, 'staging')).resolves.toBeUndefined();
   });
 
@@ -1299,6 +1304,7 @@ describe('review integrity: who approved and published cannot be rewritten', () 
       }),
     );
     await verifyForApproval({ dataops }, d.versionId, staff.reviewer); // the metadata gate (0004)
+    await attestForTests(adminQuery, d.versionId); // and the provenance gate (0004)
     await admin((c) =>
       c.query(
         `UPDATE corpus.document_versions
@@ -1555,6 +1561,7 @@ describe('review decisions gate approval', () => {
     const { d } = await pending();
     await decide(d.versionId, 'approve');
     await verifyForApproval({ dataops }, d.versionId, staff.reviewer); // the metadata gate (0004)
+    await attestForTests(adminQuery, d.versionId); // and the provenance gate (0004)
     await forceApprove(d.versionId, staff.reviewer);
   });
 

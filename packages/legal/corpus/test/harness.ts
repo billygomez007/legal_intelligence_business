@@ -206,8 +206,34 @@ export async function createHarness() {
     }
   }
 
-  const approve = (versionId: VersionId, by = staff.reviewer) =>
-    asDataops((tx) => corpusStore.approveVersion(tx, versionId, by));
+  /**
+   * Records an attestation for the version, as the ingestion pipeline's checked function would
+   * (see ingestion migration 0002). No runtime role may write one, so a corpus-only test stands
+   * in for that function through the owner path. Idempotent.
+   */
+  const attest = (versionId: VersionId) =>
+    admin((c) =>
+      c.query(
+        `INSERT INTO corpus.version_provenance_attestations
+           (version_id, source_id, content_checksum, pipeline_version, attestation_type,
+            attestation_version, evidence_reference, system_identity)
+         SELECT id, source_id, content_checksum, pipeline_version, 'ingestion_pipeline', 1,
+                'SYNTHETIC: test attestation', 'synthetic-test'
+           FROM corpus.document_versions WHERE id = $1
+         ON CONFLICT (version_id, attestation_type, attestation_version) DO NOTHING`,
+        [versionId],
+      ),
+    );
+
+  /** Approves; attests first unless told not to, so a test can meet the provenance gate itself. */
+  const approve = async (
+    versionId: VersionId,
+    by = staff.reviewer,
+    options: { attest?: boolean } = {},
+  ) => {
+    if (options.attest !== false) await attest(versionId);
+    return asDataops((tx) => corpusStore.approveVersion(tx, versionId, by));
+  };
   const publish = (versionId: VersionId, by = staff.publisher) =>
     asDataops((tx) => corpusStore.publishVersion(tx, versionId, by));
 
@@ -244,6 +270,7 @@ export async function createHarness() {
     metadataOf,
     verify,
     verifyAll,
+    attest,
     approve,
     publish,
     stateOf,

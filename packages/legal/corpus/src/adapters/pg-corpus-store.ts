@@ -28,6 +28,7 @@ import type {
   FieldRequirement,
   MetadataField,
   NewFieldVerification,
+  ProvenanceAttestation,
   VerificationStatus,
 } from '../domain/verification';
 
@@ -109,6 +110,11 @@ export function mapCorpusError(error: unknown): unknown {
         'corpus.metadata_unverified',
         'Publish-critical metadata must be verified by a person, and still match what they verified, before a version can be approved or published.',
       );
+    case 'corpus.provenance_required':
+      return preconditionFailed(
+        'corpus.provenance_required',
+        'A version cannot be approved or published until its provenance has been attested by the pipeline that acquired it.',
+      );
     case 'corpus.verification_stale':
       return preconditionFailed(
         'corpus.verification_stale',
@@ -157,6 +163,13 @@ export function mapCorpusError(error: unknown): unknown {
       // exist and a version of a different document are the same mistake.
       if (c === 'document_versions_supersedes_same_document') {
         return validationError(SUPERSESSION_INVALID, SUPERSESSION_MESSAGE);
+      }
+      // An attestation must describe the version it is for (migration 0004).
+      if (c === 'attestation_matches_version') {
+        return validationError(
+          'corpus.provenance_mismatch',
+          'An attestation must name the source, content and pipeline version of the version it is for.',
+        );
       }
       return notFound(
         'corpus.reference_not_found',
@@ -594,6 +607,42 @@ export const corpusStore = {
         ],
       ),
     );
+  },
+
+  /**
+   * The provenance attestations a version carries: which pipeline attested it, by which hand-off
+   * protocol, when. Read-only: no runtime role writes one (ingestion's checked function does).
+   * Data-ops and ingest roles.
+   */
+  async provenanceAttestations(tx: Tx, versionId: VersionId): Promise<ProvenanceAttestation[]> {
+    return guard(async () => {
+      const result = await tx.query<{
+        id: string;
+        attestation_type: string;
+        attestation_version: number;
+        pipeline_version: string;
+        evidence_reference: string;
+        system_identity: string;
+        actor_id: string | null;
+        attested_at: Date;
+      }>(
+        `SELECT id, attestation_type, attestation_version, pipeline_version, evidence_reference,
+                system_identity, actor_id, attested_at
+           FROM corpus.version_provenance_attestations
+          WHERE version_id = $1 ORDER BY sequence`,
+        [versionId],
+      );
+      return result.rows.map((row) => ({
+        id: row.id,
+        attestationType: row.attestation_type,
+        attestationVersion: row.attestation_version,
+        pipelineVersion: row.pipeline_version,
+        evidenceReference: row.evidence_reference,
+        systemIdentity: row.system_identity,
+        actorId: row.actor_id,
+        attestedAt: row.attested_at,
+      }));
+    });
   },
 
   /**

@@ -110,6 +110,7 @@ Reviewing a migration? A change to this file is a change to what a role can do.
 | `corpus.lifecycle_transitions` | SELECT |
 | `corpus.passages` | DELETE, INSERT, SELECT, UPDATE |
 | `corpus.sources` | SELECT |
+| `corpus.version_provenance_attestations` | SELECT |
 | `corpus.version_review_decisions` | SELECT |
 | `graph.citations` | INSERT, SELECT |
 | `graph.relationship_types` | SELECT |
@@ -148,6 +149,7 @@ Reviewing a migration? A change to this file is a change to what a role can do.
 | `corpus.has_reviewed_version()` | EXECUTE |
 | `corpus.rights_decision_in_force()` | EXECUTE |
 | `corpus.source_allows()` | EXECUTE |
+| `ingestion.attest_provenance()` | EXECUTE |
 | `ingestion.current_rights()` | EXECUTE |
 
 ## legalintel_dataops
@@ -180,6 +182,7 @@ Reviewing a migration? A change to this file is a change to what a role can do.
 | `corpus.source_rights_decisions` | INSERT, SELECT |
 | `corpus.sources` | INSERT, SELECT |
 | `corpus.version_field_verifications` | SELECT |
+| `corpus.version_provenance_attestations` | SELECT |
 | `corpus.version_review_decisions` | INSERT, SELECT |
 | `graph.citations` | INSERT, SELECT |
 | `graph.relationship_types` | SELECT |

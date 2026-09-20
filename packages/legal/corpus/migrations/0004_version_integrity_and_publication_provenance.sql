@@ -265,12 +265,81 @@ GRANT INSERT (version_id, field, status, value_sha256, evidence_reference, verif
   ON corpus.version_field_verifications TO legalintel_dataops;
 
 -- ---------------------------------------------------------------------------------------
--- 3. The gate. A version is approved (and, again, published) only when its publish-critical
---    metadata is human-verified and still matches what was verified. Publication repeats the
---    check so the chain cannot be bypassed by an approval recorded through another path.
---    Named to sort after versions_review_gate (0003), so transition validity and the recorded
---    review decision are checked first. SECURITY INVOKER: the role that moves a version can
---    read what it consults.
+-- 3. Provenance must be attested before a version is approved or published.
+--
+--    The corpus cannot read ingestion tables (ingestion is a later migration set, and the
+--    dependency runs the other way), so it cannot check ingestion's evidence itself. Instead it
+--    owns a record that ingestion writes ONLY after its own evidence checks have passed, and the
+--    approval gate requires that record. The dependency direction is preserved: corpus asks "has
+--    provenance been attested?", ingestion answers by writing this row.
+--
+--    An attestation says that a specific version (its source, its content checksum, its pipeline
+--    version) passed a named hand-off protocol, by a named system, at a time the database
+--    assigned. It is append-only. A composite foreign key means a forged attestation that names
+--    the wrong source, content or pipeline version cannot be recorded at all.
+--
+--    NO runtime role can insert here. The only writer is ingestion's SECURITY DEFINER function
+--    ingestion.attest_provenance(job) (ingestion migration 0002), which derives every value from
+--    the evidence it has verified rather than accepting them from its caller. That is what makes
+--    "ingestion may attest only after its checks succeed" a property of the database and not a
+--    promise of the pipeline code.
+-- ---------------------------------------------------------------------------------------
+ALTER TABLE corpus.document_versions
+  ADD CONSTRAINT document_versions_provenance_key
+  UNIQUE (id, source_id, content_checksum, pipeline_version);
+
+CREATE TABLE corpus.version_provenance_attestations (
+  id                  uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  sequence            bigint      GENERATED ALWAYS AS IDENTITY,
+  version_id          uuid        NOT NULL,
+  source_id           uuid        NOT NULL,
+  -- SHA-256 of the acquired file, as recorded on the version.
+  content_checksum    bytea       NOT NULL CHECK (length(content_checksum) = 32),
+  pipeline_version    text        NOT NULL CHECK (length(pipeline_version) BETWEEN 1 AND 64),
+  -- Which hand-off protocol was satisfied, and which revision of it.
+  attestation_type    text        NOT NULL CHECK (attestation_type IN ('ingestion_pipeline')),
+  attestation_version integer     NOT NULL CHECK (attestation_version >= 1),
+  -- An opaque pointer to the attester's own evidence (for ingestion: job, artifact, extraction).
+  evidence_reference  text        NOT NULL CHECK (length(trim(evidence_reference)) BETWEEN 1 AND 500),
+  -- The system that attested, and the person on whose request the version was acquired, if any.
+  system_identity     text        NOT NULL CHECK (system_identity ~ '^[a-z][a-z0-9_.:/-]{0,63}$'),
+  actor_id            uuid        REFERENCES iam.users (id),
+  attested_at         timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (version_id, attestation_type, attestation_version),
+  CONSTRAINT attestation_matches_version
+    FOREIGN KEY (version_id, source_id, content_checksum, pipeline_version)
+    REFERENCES corpus.document_versions (id, source_id, content_checksum, pipeline_version)
+);
+
+CREATE TRIGGER attestations_no_update BEFORE UPDATE ON corpus.version_provenance_attestations
+  FOR EACH ROW EXECUTE FUNCTION corpus.reject_mutation();
+CREATE TRIGGER attestations_no_delete BEFORE DELETE ON corpus.version_provenance_attestations
+  FOR EACH ROW EXECUTE FUNCTION corpus.reject_mutation();
+CREATE TRIGGER attestations_no_truncate BEFORE TRUNCATE ON corpus.version_provenance_attestations
+  FOR EACH STATEMENT EXECUTE FUNCTION corpus.reject_mutation();
+
+-- The time is the database's, whoever the writer is: a superuser cannot backdate it either.
+CREATE FUNCTION corpus.stamp_attestation() RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  NEW.attested_at := now();
+  RETURN NEW;
+END
+$$;
+CREATE TRIGGER attestations_stamp BEFORE INSERT ON corpus.version_provenance_attestations
+  FOR EACH ROW EXECUTE FUNCTION corpus.stamp_attestation();
+
+-- Reviewers and ingestion read attestations; no runtime role writes one (see above).
+GRANT SELECT ON corpus.version_provenance_attestations TO legalintel_ingest, legalintel_dataops;
+
+-- ---------------------------------------------------------------------------------------
+-- 4. The gate. A version is approved (and, again, published) only when its provenance has been
+--    attested AND its publish-critical metadata is human-verified and still matches what was
+--    verified. Publication repeats the checks so the chain cannot be bypassed by an approval
+--    recorded through another path. Named to sort after versions_review_gate (0003), so
+--    transition validity and the recorded review decision are checked first. SECURITY INVOKER:
+--    the role that moves a version can read what it consults.
 -- ---------------------------------------------------------------------------------------
 CREATE FUNCTION corpus.enforce_trust_gate() RETURNS trigger
 LANGUAGE plpgsql
@@ -280,6 +349,12 @@ DECLARE
 BEGIN
   IF NEW.lifecycle_state IN ('approved', 'published')
      AND NEW.lifecycle_state IS DISTINCT FROM OLD.lifecycle_state THEN
+    IF NOT EXISTS (SELECT 1 FROM corpus.version_provenance_attestations a
+                    WHERE a.version_id = NEW.id AND a.attestation_type = 'ingestion_pipeline') THEN
+      RAISE EXCEPTION 'a version cannot be approved or published until its provenance has been attested'
+        USING ERRCODE = 'P0001', HINT = 'corpus.provenance_required';
+    END IF;
+
     v_unverified := corpus.unverified_critical_fields(NEW.id);
     IF cardinality(v_unverified) > 0 THEN
       RAISE EXCEPTION 'publish-critical metadata is not verified by a person: %', array_to_string(v_unverified, ', ')

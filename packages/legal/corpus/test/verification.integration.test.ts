@@ -405,6 +405,7 @@ describe('publication re-checks the verification, so it cannot be bypassed', () 
   it('refuses to publish an approved version whose metadata is not verified', async () => {
     const w = await h.world();
     const { versionId } = await h.pendingCase(w);
+    await h.attest(versionId); // provenance is attested; only the metadata is missing
     // Arrange the impossible through the owner path: approval recorded while every trigger was off.
     await h.admin(async (c) => {
       await c.query('BEGIN');

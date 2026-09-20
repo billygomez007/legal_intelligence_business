@@ -55,6 +55,8 @@ describe('all migration sets together', () => {
           'iam.create_organization',
           'iam.provision_user',
           'iam.resolve_identity',
+          // Ingestion's sole writer of corpus provenance attestations (ingestion 0002).
+          'ingestion.attest_provenance',
         ],
       }),
     );

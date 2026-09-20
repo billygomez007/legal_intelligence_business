@@ -100,3 +100,21 @@ export interface NewFieldVerification {
   /** The reviewing person. The database cannot know who the human is; the caller supplies it. */
   readonly verifiedBy: string;
 }
+
+/**
+ * A record that a version's provenance passed a named hand-off protocol. The corpus requires one
+ * before approval and publication; ingestion writes it, through a checked database function,
+ * only after its own evidence checks have passed. Append-only.
+ */
+export interface ProvenanceAttestation {
+  readonly id: string;
+  readonly attestationType: string;
+  readonly attestationVersion: number;
+  readonly pipelineVersion: string;
+  /** An opaque pointer to the attester's own evidence. */
+  readonly evidenceReference: string;
+  readonly systemIdentity: string;
+  /** The person on whose request the version was acquired, when there was one. */
+  readonly actorId: string | null;
+  readonly attestedAt: Date;
+}

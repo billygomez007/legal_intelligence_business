@@ -34,7 +34,11 @@ beforeAll(async () => {
     createTestDatabase({ migrationSets: allMigrationSets }),
   ]);
   await seedSyntheticCorpus(
-    { ingest: seeded.poolFor('ingest'), dataops: seeded.poolFor('dataops') },
+    {
+      ingest: seeded.poolFor('ingest'),
+      dataops: seeded.poolFor('dataops'),
+      admin: (sql, params = []) => seeded.withAdmin((c) => c.query(sql, params as unknown[])),
+    },
     await staffIds(seeded),
     { documentCount: 1 },
   );

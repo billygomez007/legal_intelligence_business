@@ -70,3 +70,29 @@ export async function verifyForApproval(
     }
   });
 }
+
+/**
+ * Runs SQL as the database owner or a superuser. The corpus test database hands one out; see
+ * `attestForTests` for why a test needs it.
+ */
+export type AdminQuery = (sql: string, params?: readonly unknown[]) => Promise<unknown>;
+
+/**
+ * Records a provenance attestation for a version, standing in for ingestion's checked function
+ * (`ingestion.attest_provenance`, ingestion migration 0002). No runtime role may write an
+ * attestation, so a corpus-only test or seed reaches for the owner path. The database still
+ * applies its own rules: the attestation must describe the version (source, content, pipeline
+ * version) and is stamped by the database. Idempotent.
+ */
+export async function attestForTests(admin: AdminQuery, versionId: VersionId): Promise<void> {
+  await admin(
+    `INSERT INTO corpus.version_provenance_attestations
+       (version_id, source_id, content_checksum, pipeline_version, attestation_type,
+        attestation_version, evidence_reference, system_identity)
+     SELECT id, source_id, content_checksum, pipeline_version, 'ingestion_pipeline', 1,
+            'SYNTHETIC: test attestation', 'synthetic-test'
+       FROM corpus.document_versions WHERE id = $1
+     ON CONFLICT (version_id, attestation_type, attestation_version) DO NOTHING`,
+    [versionId],
+  );
+}
