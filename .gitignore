@@ -24,3 +24,6 @@ infra/**/data/
 # Frontend browser test artifacts
 playwright-report/
 test-results/
+
+# Local agent worktrees
+apps/web/src/.kilo/
