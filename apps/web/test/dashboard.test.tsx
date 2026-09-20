@@ -79,7 +79,7 @@ describe('LexGhana dashboard', () => {
     ]);
     for (const card of cards) {
       expect(card.querySelector('svg')).not.toBeNull();
-      expect(card.querySelector('.quick-desc')?.textContent?.length).toBeGreaterThan(10);
+      expect(card.querySelector('.quick-desc')?.textContent.length ?? 0).toBeGreaterThan(10);
     }
     expect(cards[0]?.getAttribute('href')).toBe('/app/search?kind=case');
   });
