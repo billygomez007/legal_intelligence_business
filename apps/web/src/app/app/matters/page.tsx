@@ -9,7 +9,7 @@ export const metadata = {
 
 const matters = [
   {
-    id: 'DEMO-MAT-001',
+    id: 'sample-contract-dispute',
     title: 'Sample Contract Dispute',
     client: 'Sample Client A',
     practiceArea: 'Commercial',
@@ -105,6 +105,10 @@ export default function MattersPage() {
             </div>
 
             <div className="flex flex-wrap gap-4 mt-5">
+              <Link className="button" href={`/app/matters/${matter.id}/overview`}>
+                Open matter
+              </Link>
+
               <Link className="button secondary" href={routes.research}>
                 Open research
               </Link>
