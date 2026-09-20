@@ -361,6 +361,11 @@
     padding: var(--space-4) var(--edge) var(--space-12);
   }
 
+  /* Consistent vertical rhythm between the top-level blocks of every page. */
+  .app-content > * + * {
+    margin-top: var(--space-5);
+  }
+
   .app-footer {
     display: flex;
     flex-wrap: wrap;

@@ -171,64 +171,6 @@
     margin-top: var(--space-2);
   }
 
-  .searchbox {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    padding: 0.375rem 0.375rem 0.375rem var(--space-5);
-    border: 1px solid var(--border-strong);
-    min-width: 0;
-    border-radius: var(--radius-card);
-    background: var(--surface-sunken);
-    transition:
-      border-color var(--dur-fast) var(--ease),
-      box-shadow var(--dur) var(--ease);
-  }
-
-  .searchbox:hover {
-    border-color: var(--gold-muted);
-  }
-
-  .searchbox:focus-within {
-    border-color: var(--gold);
-    box-shadow: var(--ring);
-  }
-
-  @container hero (max-width: 34rem) {
-    .searchbox {
-      flex-wrap: wrap;
-      padding: var(--space-3);
-    }
-
-    .searchbox input {
-      flex: 1 1 8rem;
-    }
-
-    .searchbox .button {
-      flex: 1 0 100%;
-    }
-  }
-
-  .searchbox-icon {
-    flex: none;
-    color: var(--fg-secondary);
-  }
-
-  .searchbox input {
-    flex: 1;
-    min-width: 0;
-    padding: var(--space-3) 0;
-    border: 0;
-    outline: 0;
-    background: transparent;
-    font-size: var(--fs-lg);
-    color: var(--fg);
-  }
-
-  .searchbox input::placeholder {
-    color: var(--fg-muted);
-  }
-
   .pill-group {
     display: flex;
     flex-wrap: wrap;

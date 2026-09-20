@@ -1,14 +1,6 @@
-import { FileText, Gavel, Landmark, Newspaper, ScrollText, type LucideIcon } from 'lucide-react';
 import { routes } from '../../lib/routes';
+import { researchScopes } from '../search/research-scopes';
 import { SearchBox } from '../search/search-box';
-
-export const researchScopes: readonly { value: string; label: string; icon: LucideIcon }[] = [
-  { value: 'cases', label: 'Cases', icon: FileText },
-  { value: 'legislation', label: 'Legislation', icon: Landmark },
-  { value: 'principles', label: 'Legal principles', icon: Gavel },
-  { value: 'procedure', label: 'Procedural rules', icon: ScrollText },
-  { value: 'developments', label: 'Recent developments', icon: Newspaper },
-];
 
 /**
  * The dashboard's focal point. A plain GET form to /app/ask: it works without JavaScript and does

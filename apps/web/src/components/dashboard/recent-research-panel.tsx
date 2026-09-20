@@ -4,12 +4,7 @@ import type { ResearchProject } from '../../data/types';
 import { relativeTime } from '../../lib/format';
 import { routes } from '../../lib/routes';
 import { ListPanel } from '../ui/list-panel';
-
-const statusTone: Record<ResearchProject['status'], string> = {
-  'In progress': 'info',
-  'Needs review': 'warning',
-  Draft: 'muted',
-};
+import { ResearchStatusLabel } from '../ui/status';
 
 export function RecentResearchPanel({
   projects,
@@ -41,7 +36,7 @@ export function RecentResearchPanel({
             </div>
             <div className="row-trailing">
               <time dateTime={project.updated}>{relativeTime(project.updated, asOf)}</time>
-              <span className={`status ${statusTone[project.status]}`}>{project.status}</span>
+              <ResearchStatusLabel status={project.status} />
             </div>
           </li>
         ))}

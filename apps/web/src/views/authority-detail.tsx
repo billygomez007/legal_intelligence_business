@@ -2,15 +2,23 @@ import Link from 'next/link';
 import {
   AuthorityCard,
   CitationChip,
+  CourtBadge,
+  LayerPanel,
+  MetadataPanel,
   PassageViewer,
+  ProvisionTree,
+  RecordHeader,
+  RightsBadge,
   SourceCard,
   VerificationBadge,
-  RightsBadge,
+  type MetadataItem,
 } from '../components/legal';
-import { DemoNotes } from '../components/demo-interactions';
+import { DemoNotes } from '../components/notes/demo-notes';
 import { EmptyState } from '../components/ui/primitives';
 import type { Authority, SourceReference } from '../data/types';
+import { formatShortDate } from '../lib/format';
 import { routes } from '../lib/routes';
+
 export function AuthorityDetail({
   authority,
   source,
@@ -22,27 +30,70 @@ export function AuthorityDetail({
   related: Authority[];
   view: string;
 }) {
-  const detail = authority.kind === 'case' ? routes.case : routes.legislation;
+  const isCase = authority.kind === 'case';
+  const detail = isCase ? routes.case : routes.legislation;
   const tabs = [
     { id: 'overview', label: 'Overview' },
-    { id: 'full', label: authority.kind === 'case' ? 'Full judgment' : 'Provisions' },
-    { id: 'citations', label: authority.kind === 'case' ? 'Citations' : 'Amendment history' },
+    { id: 'full', label: isCase ? 'Full judgment' : 'Provisions' },
+    { id: 'citations', label: isCase ? 'Citations' : 'Amendment history' },
     { id: 'related', label: 'Related authorities' },
     { id: 'notes', label: 'Notes' },
   ];
   const selected = tabs.some((t) => t.id === view) ? view : 'overview';
+
+  const metadata: MetadataItem[] =
+    authority.kind === 'case'
+      ? [
+          { label: 'Citation / identifier', value: authority.identifier },
+          { label: 'Court / source', value: authority.source },
+          { label: 'Decision date (synthetic)', value: formatShortDate(authority.date) },
+          { label: 'Document version', value: authority.version },
+          { label: 'Judges', value: authority.judges.join(', ') },
+          { label: 'Parties', value: authority.parties.join(' / ') },
+        ]
+      : [
+          { label: 'Instrument number', value: authority.instrumentNumber },
+          { label: 'Source', value: authority.source },
+          { label: 'Record date (synthetic)', value: formatShortDate(authority.date) },
+          { label: 'Document version', value: authority.version },
+        ];
+
+  const referencedLegislation = related.filter(
+    (a) => authority.kind === 'case' && authority.legislationIds.includes(a.id),
+  );
+  const relatedCases = related.filter(
+    (a) => authority.kind === 'case' && authority.relatedIds.includes(a.id),
+  );
+
   return (
     <>
-      <Link className="text-link back-link" href={routes.search}>
-        ← Back to authorities
-      </Link>
-      <p className="eyebrow">{authority.kind} · Ghana · synthetic record</p>
-      <h1 className="authority-title">{authority.title}</h1>
-      <div className="meta-row">
-        <CitationChip citation={{ authorityId: authority.id, label: authority.identifier }} />
-        <VerificationBadge state={authority.verification} />
-        <RightsBadge state={authority.rights} />
-      </div>
+      <RecordHeader
+        eyebrow={`${isCase ? 'Case' : 'Legislation'} · Ghana · synthetic record`}
+        title={authority.title}
+        backHref={routes.search}
+        backLabel="Back to authorities"
+        badges={
+          <>
+            <CourtBadge court={authority.source} />
+            <time className="record-date" dateTime={authority.date}>
+              {formatShortDate(authority.date)}
+            </time>
+            <CitationChip citation={{ authorityId: authority.id, label: authority.identifier }} />
+            <VerificationBadge state={authority.verification} />
+            <RightsBadge state={authority.rights} />
+          </>
+        }
+        {...(authority.kind === 'legislation'
+          ? {
+              facts: [
+                { label: 'Instrument number', value: authority.instrumentNumber },
+                { label: 'Enactment', value: authority.enactment },
+                { label: 'Commencement', value: authority.commencement },
+                { label: 'Status', value: authority.status },
+              ],
+            }
+          : {})}
+      />
       <nav className="tabs" aria-label="Authority sections">
         {tabs.map((tab) => (
           <Link
@@ -54,71 +105,17 @@ export function AuthorityDetail({
           </Link>
         ))}
       </nav>
-      <div className="content-grid">
-        <div>
-          {selected === 'overview' && (
-            <>
-              <section className="panel panel-padded">
-                <p className="eyebrow">Structured metadata · demonstration</p>
-                <h2 className="mb-5">
-                  {authority.kind === 'case' ? 'Case overview' : 'Instrument overview'}
-                </h2>
-                <dl className="metadata-grid">
-                  <div>
-                    <dt>Citation / identifier</dt>
-                    <dd>{authority.identifier}</dd>
-                  </div>
-                  <div>
-                    <dt>Court / source</dt>
-                    <dd>{authority.source}</dd>
-                  </div>
-                  <div>
-                    <dt>
-                      {authority.kind === 'case'
-                        ? 'Decision date (synthetic)'
-                        : 'Record date (synthetic)'}
-                    </dt>
-                    <dd>{authority.date}</dd>
-                  </div>
-                  <div>
-                    <dt>Document version</dt>
-                    <dd>{authority.version}</dd>
-                  </div>
-                  {authority.kind === 'case' ? (
-                    <>
-                      <div>
-                        <dt>Judges</dt>
-                        <dd>{authority.judges.join(', ')}</dd>
-                      </div>
-                      <div>
-                        <dt>Parties</dt>
-                        <dd>{authority.parties.join(' / ')}</dd>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div>
-                        <dt>Instrument number</dt>
-                        <dd>{authority.instrumentNumber}</dd>
-                      </div>
-                      <div>
-                        <dt>Enactment</dt>
-                        <dd>{authority.enactment}</dd>
-                      </div>
-                      <div>
-                        <dt>Commencement</dt>
-                        <dd>{authority.commencement}</dd>
-                      </div>
-                      <div>
-                        <dt>Status (synthetic)</dt>
-                        <dd>{authority.status}</dd>
-                      </div>
-                    </>
-                  )}
-                </dl>
-              </section>
-              {authority.kind === 'case' ? (
-                <>
+      <div className="reading-layout">
+        <div className="reading-main">
+          {selected === 'overview' &&
+            (authority.kind === 'case' ? (
+              <>
+                <LayerPanel
+                  layer="synthesis"
+                  label="Derived summary"
+                  detail="demonstration · not the judgment text"
+                  className="brief"
+                >
                   {[
                     { title: 'Facts', text: authority.facts },
                     { title: 'Issues', text: authority.issues },
@@ -130,88 +127,117 @@ export function AuthorityDetail({
                       <p>{part.text}</p>
                     </section>
                   ))}
-                  <section className="brief-section">
-                    <h2>Authorities cited</h2>
-                    {authority.citations.length ? (
-                      authority.citations.map((citation) => (
-                        <CitationChip key={citation.label} citation={citation} />
-                      ))
-                    ) : (
-                      <p>No example citations supplied.</p>
-                    )}
-                  </section>
-                  <section className="brief-section">
-                    <h2>Legislation referenced</h2>
-                    {related
-                      .filter((a) => authority.legislationIds.includes(a.id))
-                      .map((a) => (
+                </LayerPanel>
+                <section className="detail-section">
+                  <h2>Authorities cited</h2>
+                  {authority.citations.length ? (
+                    authority.citations.map((citation) => (
+                      <CitationChip key={citation.label} citation={citation} />
+                    ))
+                  ) : (
+                    <p className="muted">No example citations supplied.</p>
+                  )}
+                </section>
+                <section className="detail-section">
+                  <h2>Legislation referenced</h2>
+                  {referencedLegislation.length ? (
+                    <div className="panel result-list">
+                      {referencedLegislation.map((a) => (
                         <AuthorityCard key={a.id} authority={a} />
                       ))}
-                  </section>
-                  <section className="brief-section">
-                    <h2>Related cases</h2>
-                    {related
-                      .filter((a) => authority.relatedIds.includes(a.id))
-                      .map((a) => (
+                    </div>
+                  ) : (
+                    <p className="muted">No example legislation referenced.</p>
+                  )}
+                </section>
+                <section className="detail-section">
+                  <h2>Related cases</h2>
+                  {relatedCases.length ? (
+                    <div className="panel result-list">
+                      {relatedCases.map((a) => (
                         <AuthorityCard key={a.id} authority={a} />
                       ))}
-                  </section>
-                </>
-              ) : (
-                <ProvisionTree authority={authority} />
-              )}
-            </>
-          )}
+                    </div>
+                  ) : (
+                    <p className="muted">No related example cases.</p>
+                  )}
+                </section>
+              </>
+            ) : (
+              <>
+                <ProvisionTree authorityId={authority.id} parts={authority.parts} />
+                <section className="detail-section">
+                  <h2>Cases citing this provision</h2>
+                  {related.length ? (
+                    <div className="panel result-list">
+                      {related.map((a) => (
+                        <AuthorityCard key={a.id} authority={a} />
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="muted">No example cases cite this provision.</p>
+                  )}
+                </section>
+              </>
+            ))}
           {selected === 'full' && (
             <>
-              <h2 className="mb-4">
-                {authority.kind === 'case'
+              <h2 className="detail-heading">
+                {isCase
                   ? 'Full judgment · synthetic source fixture'
                   : 'Provisions · synthetic text'}
               </h2>
-              {authority.kind === 'legislation' && <ProvisionTree authority={authority} />}
+              {authority.kind === 'legislation' && (
+                <ProvisionTree authorityId={authority.id} parts={authority.parts} />
+              )}
               <PassageViewer source={source} />
             </>
           )}
           {selected === 'citations' &&
             (authority.kind === 'case' ? (
-              <section className="panel panel-padded">
+              <section className="panel panel-padded stack">
                 <h2>Example citation links</h2>
-                <p className="micro my-3">
+                <p className="micro">
                   These are fixture relationships. No real citation treatment has been established.
                 </p>
-                {authority.citations.length ? (
-                  authority.citations.map((citation) => (
-                    <CitationChip key={citation.label} citation={citation} />
-                  ))
-                ) : (
-                  <EmptyState title="No citations supplied" />
-                )}
+                <div>
+                  {authority.citations.length ? (
+                    authority.citations.map((citation) => (
+                      <CitationChip key={citation.label} citation={citation} />
+                    ))
+                  ) : (
+                    <EmptyState title="No citations supplied" />
+                  )}
+                </div>
                 <EmptyState
                   title="Case treatment is not connected"
                   description="Followed, applied, distinguished or overruled relationships require verified source support."
                 />
               </section>
             ) : (
-              <section className="panel panel-padded">
+              <section className="panel panel-padded stack">
                 <h2>Amendment history</h2>
-                {authority.amendments.map((entry) => (
-                  <p className="micro mt-4" key={entry}>
-                    {entry}
-                  </p>
-                ))}
+                <ol className="timeline">
+                  {authority.amendments.map((entry) => (
+                    <li key={entry}>{entry}</li>
+                  ))}
+                </ol>
               </section>
             ))}
           {selected === 'related' && (
-            <section>
-              <h2 className="mb-4">
-                {authority.kind === 'case' ? 'Related authorities' : 'Cases citing this provision'}
+            <section className="stack">
+              <h2 className="detail-heading">
+                {isCase ? 'Related authorities' : 'Cases citing this provision'}
               </h2>
-              <p className="micro mb-4">
+              <p className="micro">
                 Illustrative links only. No similarity search or citation analysis has run.
               </p>
               {related.length ? (
-                related.map((a) => <AuthorityCard authority={a} key={a.id} />)
+                <div className="panel result-list">
+                  {related.map((a) => (
+                    <AuthorityCard authority={a} key={a.id} />
+                  ))}
+                </div>
               ) : (
                 <EmptyState title="No related example authorities" />
               )}
@@ -220,26 +246,10 @@ export function AuthorityDetail({
           {selected === 'notes' && <DemoNotes key={authority.id} initialNote="" />}
         </div>
         <aside className="source-rail" aria-label="Source document panel">
+          <MetadataPanel items={metadata} />
           <SourceCard source={source} />
         </aside>
       </div>
     </>
-  );
-}
-function ProvisionTree({ authority }: { authority: Extract<Authority, { kind: 'legislation' }> }) {
-  return (
-    <section className="provision-tree" aria-label="Provision tree">
-      <h2 className="mt-6">Parts & sections</h2>
-      {authority.parts.map((part) => (
-        <details open key={part.title}>
-          <summary>{part.title}</summary>
-          {part.provisions.map((provision) => (
-            <Link key={provision.id} href={routes.source(authority.id, provision.passageId)}>
-              {provision.label} · {provision.heading}
-            </Link>
-          ))}
-        </details>
-      ))}
-    </section>
   );
 }

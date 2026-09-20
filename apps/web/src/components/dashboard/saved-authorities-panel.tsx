@@ -2,20 +2,8 @@ import Link from 'next/link';
 import { BookOpen, Scale } from 'lucide-react';
 import type { LegalAuthority } from '../../data/types';
 import { routes } from '../../lib/routes';
-import { authorityHref, RightsBadge, VerificationBadge } from '../legal';
+import { authorityHref, TrustBadge } from '../legal';
 import { ListPanel } from '../ui/list-panel';
-
-/**
- * One trust badge per row: the strongest verification state if there is one, otherwise the
- * source-rights state. Every badge carries its own "· demo" suffix.
- */
-function TrustBadge({ authority }: { authority: LegalAuthority }) {
-  return authority.verification === 'verified' || authority.verification === 'human-reviewed' ? (
-    <VerificationBadge state={authority.verification} />
-  ) : (
-    <RightsBadge state={authority.rights} />
-  );
-}
 
 export function SavedAuthoritiesPanel({ authorities }: { authorities: LegalAuthority[] }) {
   return (

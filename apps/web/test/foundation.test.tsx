@@ -6,7 +6,8 @@ import { CommandSearch } from '../src/components/shell/command-search';
 import { SourceCard } from '../src/components/legal';
 import { AskWorkbench } from '../src/components/ask-workbench';
 import { SearchFilters } from '../src/components/search-filters';
-import { AlertManager, LibraryView } from '../src/components/demo-interactions';
+import { AlertManager } from '../src/components/alerts/alert-manager';
+import { LibraryView } from '../src/components/library/library-view';
 import { webClients, emptySearch } from '../src/data/mock-clients';
 import Dashboard from '../src/app/app/page';
 
@@ -113,18 +114,29 @@ describe('legal research foundation', () => {
   });
   it('filters library contents and supplies the report empty state', async () => {
     const user = userEvent.setup();
-    render(
-      <LibraryView
-        authorities={await webClients.authorities.list()}
-        projects={await webClients.research.list()}
-      />,
-    );
-    await user.selectOptions(screen.getByLabelText('Saved content'), 'legislation');
+    render(<LibraryView authorities={await webClients.authorities.list()} passages={[]} />);
+    await user.click(screen.getByRole('tab', { name: /Legislation/ }));
     expect(screen.getByRole('link', { name: 'Example Companies Act Provision' })).toBeDefined();
     expect(screen.queryByRole('link', { name: 'Sample Contract Dispute' })).toBeNull();
-    await user.selectOptions(screen.getByLabelText('Saved content'), 'reports');
+    await user.click(screen.getByRole('tab', { name: /Research reports/ }));
     expect(screen.getByText('No research reports yet')).toBeDefined();
   });
+
+  it('moves between library tabs with the arrow keys and keeps focus on the selected tab', async () => {
+    const user = userEvent.setup();
+    render(<LibraryView authorities={await webClients.authorities.list()} passages={[]} />);
+    const cases = screen.getByRole('tab', { name: /^Cases/ });
+    cases.focus();
+    await user.keyboard('{ArrowRight}');
+    const legislation = screen.getByRole('tab', { name: /^Legislation/ });
+    expect(legislation.getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe(legislation);
+    await user.keyboard('{End}');
+    expect(document.activeElement).toBe(screen.getByRole('tab', { name: /Research reports/ }));
+    await user.keyboard('{ArrowRight}');
+    expect(document.activeElement).toBe(screen.getByRole('tab', { name: /^Cases/ }));
+  });
+
   it('marks alert changes as temporary without mutating the adapter', async () => {
     const user = userEvent.setup();
     render(<AlertManager initialAlerts={await webClients.alerts.list()} />);

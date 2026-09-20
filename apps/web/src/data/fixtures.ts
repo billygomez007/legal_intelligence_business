@@ -416,4 +416,9 @@ export const workspace: WorkspaceOverview = {
       status: 'Invited',
     },
   ],
+  roles: [
+    { name: 'Owner', summary: 'Manages the workspace, its members and billing.' },
+    { name: 'Researcher', summary: 'Searches, saves authorities and keeps research notes.' },
+    { name: 'Reviewer', summary: 'Checks saved authorities and source passages before reliance.' },
+  ],
 };

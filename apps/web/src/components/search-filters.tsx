@@ -1,4 +1,6 @@
 import type { LegalAuthority, SearchQuery } from '../data/types';
+
+/** The six research filters. Plain labelled selects inside a GET form, so they work without JavaScript. */
 export function SearchFilters({
   query,
   authorities,
@@ -6,9 +8,8 @@ export function SearchFilters({
   query: SearchQuery;
   authorities: LegalAuthority[];
 }) {
-  const unique = (key: 'jurisdiction' | 'source' | 'practiceArea' | 'concept') => [
-    ...new Set(authorities.map((a) => a[key])),
-  ];
+  const unique = (key: 'jurisdiction' | 'source' | 'practiceArea' | 'concept') =>
+    [...new Set(authorities.map((a) => a[key]))].sort();
   const fields = [
     { name: 'jurisdiction', label: 'Jurisdiction', options: unique('jurisdiction') },
     { name: 'court', label: 'Court / source', options: unique('source') },
@@ -28,7 +29,7 @@ export function SearchFilters({
         <label className="field" key={name}>
           {label}
           <select name={name} defaultValue={query[name]}>
-            <option value="">All {label.toLowerCase()}</option>
+            <option value="">Any</option>
             {options.map((value) => (
               <option key={value} value={value}>
                 {value}

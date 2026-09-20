@@ -168,4 +168,6 @@ export interface WorkspaceOverview {
   savedAuthorityIds: string[];
   updates: LegalUpdate[];
   members: WorkspaceMember[];
+  /** Illustrative role labels. They carry no permissions in this demonstration. */
+  roles: { name: string; summary: string }[];
 }

@@ -1,14 +1,20 @@
 'use client';
+
 import { useState } from 'react';
+import { Search } from 'lucide-react';
 import type { LegalAnswer as LegalAnswerModel, SourceReference } from '../data/types';
-import { LegalAnswer, SourceCard } from './legal';
+import { LayerLegend, LegalAnswer, SourceCard } from './legal';
+import { researchScopes } from './search/research-scopes';
 import { Button, EmptyState } from './ui/primitives';
+
 export function AskWorkbench({
   initialQuestion,
+  initialScopes = [],
   answer,
   sources,
 }: {
   initialQuestion: string;
+  initialScopes?: string[];
   answer: LegalAnswerModel;
   sources: SourceReference[];
 }) {
@@ -18,7 +24,7 @@ export function AskWorkbench({
   return (
     <>
       <form
-        className="panel panel-padded"
+        className="panel ask-form"
         onSubmit={(event) => {
           event.preventDefault();
           setSubmitted(true);
@@ -26,7 +32,7 @@ export function AskWorkbench({
         }}
       >
         <label className="field">
-          Your research question
+          <span>Your research question</span>
           <textarea
             value={question}
             onChange={(event) => {
@@ -38,15 +44,33 @@ export function AskWorkbench({
             placeholder="Ask a legal research question..."
           />
         </label>
-        <div className="flex flex-wrap items-center gap-4">
-          <Button type="submit">Preview research workflow</Button>
+        <fieldset className="pill-group">
+          <legend className="sr-only">Research scope</legend>
+          {researchScopes.map(({ value, label, icon: Icon }) => (
+            <label className="pill" key={value}>
+              <input
+                type="checkbox"
+                name="scope"
+                value={value}
+                defaultChecked={initialScopes.includes(value)}
+              />
+              <Icon size={16} aria-hidden="true" />
+              {label}
+            </label>
+          ))}
+        </fieldset>
+        <div className="ask-form-foot">
+          <Button type="submit" className="lg">
+            <Search size={16} aria-hidden="true" />
+            Preview research workflow
+          </Button>
           <p className="micro">
             No AI or live retrieval is connected. Do not enter confidential material.
           </p>
         </div>
       </form>
       {submitted && (
-        <div role="status" className="notice mt-5">
+        <div role="status" className="notice">
           <div>
             <strong>No legal answer was generated</strong>
             <p>
@@ -56,8 +80,9 @@ export function AskWorkbench({
           </div>
         </div>
       )}
-      <div className="content-grid">
-        <div>
+      <LayerLegend />
+      <div className="reading-layout">
+        <div className="reading-main">
           {showExample ? (
             <LegalAnswer answer={answer} />
           ) : (
@@ -67,7 +92,7 @@ export function AskWorkbench({
             />
           )}
           <Button
-            className="secondary mt-4"
+            className="secondary"
             onClick={() => {
               setShowExample((value) => !value);
             }}
@@ -76,7 +101,7 @@ export function AskWorkbench({
           </Button>
         </div>
         <aside className="source-rail" aria-label="Source documents">
-          <h2 className="mb-4">{showExample ? 'Example sources' : 'Source documents'}</h2>
+          <h2 className="rail-title">{showExample ? 'Example sources' : 'Source documents'}</h2>
           {showExample ? (
             sources.map((source) => <SourceCard key={source.documentId} source={source} />)
           ) : (

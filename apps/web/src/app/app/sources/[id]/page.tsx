@@ -1,55 +1,56 @@
 import { notFound } from 'next/navigation';
-import Link from 'next/link';
-import { webClients } from '../../../../data/mock-clients';
 import {
   authorityHref,
+  MetadataPanel,
   PassageViewer,
-  VerificationBadge,
+  RecordHeader,
   RightsBadge,
+  VerificationBadge,
 } from '../../../../components/legal';
-import { PageHeader } from '../../../../components/ui/primitives';
+import { webClients } from '../../../../data/mock-clients';
+import { routes } from '../../../../lib/routes';
+
 export default async function SourcePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const source = await webClients.authorities.source(id);
   if (!source) notFound();
+  const { authority } = source;
   return (
     <>
-      <PageHeader
-        eyebrow="PRIMARY SOURCE · SYNTHETIC FIXTURE"
-        title={source.authority.title}
-        description="This document contains demonstration text only. It is not a legal authority."
-        action={
-          <Link className="button secondary" href={authorityHref(source.authority)}>
-            Open structured overview
-          </Link>
+      <RecordHeader
+        eyebrow="Primary source · synthetic fixture"
+        title={authority.title}
+        backHref={authorityHref(authority)}
+        backLabel="Open structured overview"
+        badges={
+          <>
+            <VerificationBadge state={authority.verification} />
+            <RightsBadge state={authority.rights} />
+          </>
         }
       />
-      <div className="panel panel-padded mb-6">
-        <p className="eyebrow">Source provenance · demonstration</p>
-        <dl className="metadata-grid">
-          <div>
-            <dt>Document ID</dt>
-            <dd>{source.documentId}</dd>
-          </div>
-          <div>
-            <dt>Version</dt>
-            <dd>{source.authority.version}</dd>
-          </div>
-          <div>
-            <dt>Origin</dt>
-            <dd>Locally authored synthetic UI fixture</dd>
-          </div>
-          <div>
-            <dt>Collection</dt>
-            <dd>Public demonstration corpus</dd>
-          </div>
-        </dl>
-        <div className="meta-row mt-5">
-          <VerificationBadge state={source.authority.verification} />
-          <RightsBadge state={source.authority.rights} />
+      <p className="muted source-note">
+        This document contains demonstration text only. It is not a legal authority.
+      </p>
+      <div className="reading-layout">
+        <div className="reading-main">
+          <PassageViewer source={source} />
         </div>
+        <aside className="source-rail" aria-label="Source provenance">
+          <MetadataPanel
+            title="Source provenance"
+            items={[
+              { label: 'Document ID', value: source.documentId },
+              { label: 'Version', value: authority.version },
+              { label: 'Origin', value: 'Locally authored synthetic UI fixture' },
+              { label: 'Collection', value: 'Public demonstration corpus' },
+            ]}
+          />
+          <a className="text-link" href={routes.search}>
+            Back to search
+          </a>
+        </aside>
       </div>
-      <PassageViewer source={source} />
     </>
   );
 }

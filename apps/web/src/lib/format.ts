@@ -29,3 +29,16 @@ const longDate = new Intl.DateTimeFormat('en-GB', {
 export function formatLongDate(date: Date): string {
   return longDate.format(date);
 }
+
+const shortDate = new Intl.DateTimeFormat('en-GB', {
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+  // Fixture dates are calendar dates (UTC midnight); never let the viewer's timezone shift them.
+  timeZone: 'UTC',
+});
+
+/** "14 Apr 2025", from an ISO calendar date. */
+export function formatShortDate(iso: string): string {
+  return shortDate.format(new Date(iso));
+}
