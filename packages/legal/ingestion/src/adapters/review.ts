@@ -1,7 +1,7 @@
 import { recordPlatformAuditEvent } from '@legalintel/audit';
 import { withPublicTransaction, type DbPool, type Tx } from '@legalintel/db';
 import { enforce, type AuthzContext } from '@legalintel/iam';
-import { isAppError } from '@legalintel/kernel';
+import { forbidden, isAppError } from '@legalintel/kernel';
 import {
   corpusStore,
   DocumentId,
@@ -57,8 +57,36 @@ interface TaskRow {
   version_id: string | null;
   job_status: string;
   source_id: string;
+  requester_id: string;
   decided: boolean;
 }
+
+export const REQUESTER_CANNOT_APPROVE = 'ingestion.requester_cannot_approve';
+
+/**
+ * What a caller sees for anything thrown while deciding: the requester rule as its own typed,
+ * fixed-message refusal (whether the adapter or the database caught it), the ingestion failure
+ * that is already typed, and otherwise a category, never the database's words.
+ */
+export function translateReviewError(error: unknown): unknown {
+  if (error instanceof IngestionFailure) return error;
+  if (isAppError(error) && error.code === REQUESTER_CANNOT_APPROVE) return error;
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'hint' in error &&
+    error.hint === REQUESTER_CANNOT_APPROVE
+  ) {
+    return requesterCannotApprove();
+  }
+  return new IngestionFailure(failureCategory(error));
+}
+
+const requesterCannotApprove = () =>
+  forbidden(
+    REQUESTER_CANNOT_APPROVE,
+    'The person who requested an ingestion cannot approve its result. Another reviewer must.',
+  );
 
 /**
  * The human side of ingestion: a person reads a review packet and decides. Use a dataops pool.
@@ -267,7 +295,7 @@ export class IngestionReview {
           LOCK_NAMESPACE.review,
         ]);
         const found = await tx.query<TaskRow>(
-          `SELECT t.version_id, j.status AS job_status, j.source_id,
+          `SELECT t.version_id, j.status AS job_status, j.source_id, j.actor_id AS requester_id,
                   EXISTS(SELECT 1 FROM ingestion.review_decisions d
                           WHERE d.task_id=t.id AND d.decision IN ('approve','reject')) AS decided
              FROM ingestion.review_tasks t JOIN ingestion.jobs j ON j.id=t.job_id WHERE t.id=$1`,
@@ -277,6 +305,11 @@ export class IngestionReview {
         // The first approval or rejection closes a task. The database refuses a second one as
         // well; this says so before anything is written.
         if (task === undefined || task.decided) throw new IngestionFailure('input_invalid');
+        // Whoever requested the ingestion cannot approve it, even holding both permissions. The
+        // database refuses too (ingestion migration 0002); this says so before anything is
+        // written. Rejecting and holding are not blocked: neither can put anything in front of a
+        // user.
+        if (decision === 'approve' && task.requester_id === actorId) throw requesterCannotApprove();
 
         let corpusDecisionId: string | null = null;
         if (task.version_id !== null) {
@@ -315,9 +348,7 @@ export class IngestionReview {
       });
     } catch (error) {
       // Callers get a typed category, never the database's words.
-      throw error instanceof IngestionFailure
-        ? error
-        : new IngestionFailure(failureCategory(error));
+      throw translateReviewError(error);
     }
   }
 }

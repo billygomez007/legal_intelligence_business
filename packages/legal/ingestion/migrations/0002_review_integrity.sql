@@ -105,3 +105,46 @@ CREATE CONSTRAINT TRIGGER jobs_attested
   DEFERRABLE INITIALLY DEFERRED
   FOR EACH ROW WHEN (NEW.status = 'pending_review')
   EXECUTE FUNCTION ingestion.require_attestation();
+
+-- ---------------------------------------------------------------------------------------
+-- 2. The person who requested an ingestion cannot approve its result.
+--
+--    Role separation is not separation of duties: one person can hold both the permission to
+--    request ingestion and the permission to review it. Whoever asked for a document to be
+--    ingested must not be the one who accepts it, or the review checks nothing.
+--
+--    The rule is about APPROVAL only. A requester may still inspect, reject (withdrawing their own
+--    request) and hold, none of which can put anything in front of a user.
+--
+--    It lives HERE and not in the corpus, because the requester (ingestion.jobs.actor_id) is an
+--    ingestion fact and the corpus must not depend on ingestion. The corpus decision is recorded
+--    first and this row mirrors it in the same transaction, so refusing the mirror rolls back the
+--    whole review, including the corpus decision recorded a moment before.
+-- ---------------------------------------------------------------------------------------
+CREATE FUNCTION ingestion.enforce_review_separation() RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_requester uuid;
+BEGIN
+  IF NEW.decision <> 'approve' THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT j.actor_id INTO v_requester
+    FROM ingestion.review_tasks t
+    JOIN ingestion.jobs j ON j.id = t.job_id
+   WHERE t.id = NEW.task_id;
+
+  IF v_requester IS NOT DISTINCT FROM NEW.actor_id THEN
+    RAISE EXCEPTION 'the person who requested an ingestion cannot approve its result'
+      USING ERRCODE = 'P0001', HINT = 'ingestion.requester_cannot_approve';
+  END IF;
+  RETURN NEW;
+END
+$$;
+
+-- Named to sort before `validate` (ingestion 0001), so the separation is decided first.
+CREATE TRIGGER review_separation
+  BEFORE INSERT ON ingestion.review_decisions
+  FOR EACH ROW EXECUTE FUNCTION ingestion.enforce_review_separation();
