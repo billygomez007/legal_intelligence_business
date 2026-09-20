@@ -51,6 +51,15 @@ export function mapPgError(error: unknown): unknown {
       'That email address already belongs to another account.',
     );
   }
+  // The role hierarchy, enforced by the database (IAM migration 0002) as well as by the
+  // application. The application normally refuses first, with the same codes; these are what a
+  // caller sees if a code path reached the database without asking.
+  if (hint === 'authz.role_not_assignable') {
+    return forbidden('authz.role_not_assignable', 'You cannot grant or revoke that role.');
+  }
+  if (hint === 'authz.member_not_manageable') {
+    return forbidden('authz.denied', 'You do not have permission to perform this action.');
+  }
   switch (code) {
     case '23505':
       if (constraint === 'organizations_slug_key') {

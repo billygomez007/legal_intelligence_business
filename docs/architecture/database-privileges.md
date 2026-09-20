@@ -77,9 +77,11 @@ Reviewing a migration? A change to this file is a change to what a role can do.
 | `app.current_org_id()` | EXECUTE |
 | `app.current_user_id()` | EXECUTE |
 | `corpus.source_allows()` | EXECUTE |
+| `iam.actor_may_assign()` | EXECUTE |
 | `iam.create_organization()` | EXECUTE |
 | `iam.provision_user()` | EXECUTE |
 | `iam.resolve_identity()` | EXECUTE |
+| `iam.role_may_assign()` | EXECUTE |
 
 ## legalintel_ingest
 
