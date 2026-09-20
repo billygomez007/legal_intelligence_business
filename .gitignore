@@ -20,3 +20,7 @@ customer-documents/
 
 # Local infrastructure state
 infra/**/data/
+
+# Frontend browser test artifacts
+playwright-report/
+test-results/

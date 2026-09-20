@@ -1,0 +1,272 @@
+import type {
+  Alert,
+  Authority,
+  LegalAnswer,
+  Passage,
+  ResearchProject,
+  WorkspaceOverview,
+} from './types';
+const common = {
+  jurisdiction: 'Ghana',
+  demonstration: true,
+  scope: 'public-demo',
+  version: 'DEMO-v1',
+} as const;
+export const authorities: Authority[] = [
+  {
+    ...common,
+    id: 'sample-contract',
+    kind: 'case',
+    title: 'Sample Contract Dispute',
+    identifier: 'DEMO-CASE-001',
+    source: 'Example Court • synthetic',
+    date: '2025-04-14',
+    practiceArea: 'Contract',
+    concept: 'Breach of contract',
+    excerpt:
+      'Synthetic research fixture exploring the structure of a contract dispute. No legal finding is represented.',
+    verification: 'human-reviewed',
+    rights: 'available',
+    judges: ['Example judicial panel (synthetic)'],
+    parties: ['Sample Party A', 'Sample Party B'],
+    facts:
+      'This demonstration record represents a fictional dispute about delivery under a sample agreement.',
+    issues: 'Placeholder for the issues identified in a reviewed judgment.',
+    holding: 'No real holding. This field demonstrates the placement of a source-linked holding.',
+    reasoning:
+      'A future reviewed case brief will map each proposition to a passage in the original document.',
+    citations: [{ authorityId: 'sample-land', label: 'DEMO-CASE-002' }],
+    legislationIds: ['example-companies'],
+    relatedIds: ['sample-employment'],
+  },
+  {
+    ...common,
+    id: 'sample-land',
+    kind: 'case',
+    title: 'Sample Land Title Matter',
+    identifier: 'DEMO-CASE-002',
+    source: 'Example Court • synthetic',
+    date: '2024-08-09',
+    practiceArea: 'Land',
+    concept: 'Title',
+    excerpt:
+      'Synthetic record for demonstrating land research navigation and an unavailable source.',
+    verification: 'machine-extracted',
+    rights: 'unavailable',
+    judges: ['Not supplied in demonstration'],
+    parties: ['Sample Party C', 'Sample Party D'],
+    facts: 'No source text is available for this fixture.',
+    issues: 'Not reviewed.',
+    holding: 'Unavailable pending source review.',
+    reasoning: 'The interface must not imply a legal conclusion when a source is unavailable.',
+    citations: [],
+    legislationIds: [],
+    relatedIds: [],
+  },
+  {
+    ...common,
+    id: 'example-companies',
+    kind: 'legislation',
+    title: 'Example Companies Act Provision',
+    identifier: 'DEMO-INSTRUMENT-001',
+    instrumentNumber: 'DEMO-INSTRUMENT-001 (not an enacted law)',
+    source: 'Example legislative source • synthetic',
+    date: '2023-01-20',
+    practiceArea: 'Corporate',
+    concept: 'Company administration',
+    excerpt:
+      'Fictional instrument used to demonstrate provision navigation. This is not the Companies Act of Ghana.',
+    verification: 'verified',
+    rights: 'available',
+    enactment: 'Not enacted • demonstration only',
+    commencement: 'Not applicable',
+    status: 'Example current status',
+    parts: [
+      {
+        title: 'Part I · Example preliminary provisions',
+        provisions: [
+          {
+            id: 'section-1',
+            label: 'Section 1',
+            heading: 'Example scope',
+            passageId: 'demo-provision-1',
+          },
+          {
+            id: 'section-2',
+            label: 'Section 2',
+            heading: 'Example definitions',
+            passageId: 'demo-provision-2',
+          },
+        ],
+      },
+    ],
+    amendments: ['No real amendment history. Example version DEMO-v1.'],
+    citingCaseIds: ['sample-contract'],
+  },
+  {
+    ...common,
+    id: 'sample-employment',
+    kind: 'case',
+    title: 'Sample Employment Matter',
+    identifier: 'DEMO-CASE-003',
+    source: 'Example Court • synthetic',
+    date: '2025-07-02',
+    practiceArea: 'Employment',
+    concept: 'Employment terms',
+    excerpt:
+      'Synthetic metadata demonstrating a rights-restricted document. Source text is intentionally omitted.',
+    verification: 'unverified',
+    rights: 'restricted',
+    judges: ['Not supplied in demonstration'],
+    parties: ['Sample Party E', 'Sample Party F'],
+    facts: 'Source content is restricted.',
+    issues: 'Source content is restricted.',
+    holding: 'Source content is restricted.',
+    reasoning: 'No synthesis is available for this restricted source.',
+    citations: [],
+    legislationIds: [],
+    relatedIds: [],
+  },
+];
+export const passages: Passage[] = [
+  {
+    id: 'demo-contract-1',
+    documentId: 'sample-contract',
+    locator: 'Example paragraph 1',
+    version: 'DEMO-v1',
+    text: 'SYNTHETIC SOURCE TEXT. This fictional document describes a sample delivery agreement between Sample Party A and Sample Party B. It is a UI fixture, not a judgment or statement of Ghanaian law.',
+  },
+  {
+    id: 'demo-provision-1',
+    documentId: 'example-companies',
+    locator: 'Example section 1',
+    version: 'DEMO-v1',
+    text: 'SYNTHETIC PROVISION. This example illustrates how a section of a future licensed instrument will be displayed. It creates no rights, duties or legal rules.',
+  },
+  {
+    id: 'demo-provision-2',
+    documentId: 'example-companies',
+    locator: 'Example section 2',
+    version: 'DEMO-v1',
+    text: 'SYNTHETIC PROVISION. Defined terms from a real instrument would appear here after lawful acquisition and review.',
+  },
+];
+export const projects: ResearchProject[] = [
+  {
+    id: 'sample-contract-research',
+    title: 'Sample Contract Dispute',
+    question: 'How should I organize the authorities for a sample contract matter?',
+    reference: 'DEMO-MATTER-01',
+    updated: '2026-09-18',
+    authorityIds: ['sample-contract', 'example-companies'],
+    passageIds: ['demo-contract-1'],
+    note: 'Example user note: review the underlying source before preparing a research memorandum.',
+    history: [
+      'Example authority added to this matter',
+      'Example passage saved for review',
+      'Sample research question recorded',
+    ],
+  },
+  {
+    id: 'sample-land-research',
+    title: 'Sample Land Title Matter',
+    question: 'Which source documents are needed for this example title review?',
+    reference: 'DEMO-MATTER-02',
+    updated: '2026-09-17',
+    authorityIds: ['sample-land'],
+    passageIds: [],
+    note: '',
+    history: ['Sample workspace created'],
+  },
+  {
+    id: 'example-companies-research',
+    title: 'Example Companies Act Research',
+    question: 'How will section-level research be organized?',
+    reference: 'DEMO-MATTER-03',
+    updated: '2026-09-16',
+    authorityIds: ['example-companies'],
+    passageIds: ['demo-provision-1'],
+    note: '',
+    history: ['Example provision saved'],
+  },
+];
+export const answer: LegalAnswer = {
+  answerText:
+    'This demonstration shows how a research answer will be organized. No legal conclusion has been generated.',
+  reasoning:
+    'A future answer will explain the connection between a legal proposition and an approved source passage. The linked fictional record demonstrates that navigation only.',
+  caveats:
+    'This is a fixed interface example. It does not answer your question, establish Ghanaian law, or reflect any AI retrieval or verification.',
+  citations: [
+    {
+      authorityId: 'sample-contract',
+      passageId: 'demo-contract-1',
+      label: 'DEMO-CASE-001 · example paragraph 1',
+    },
+  ],
+  sourceDocumentIds: ['sample-contract'],
+  sourcePassageIds: ['demo-contract-1'],
+  model: 'none',
+  modelVersion: 'not-run',
+  retrievalIds: [],
+  createdAt: '2026-09-18T09:00:00Z',
+  verification: 'unverified',
+  demonstration: true,
+};
+export const alerts: Alert[] = [
+  {
+    id: 'demo-alert-1',
+    name: 'Example contract research',
+    type: 'Topic',
+    frequency: 'Weekly',
+    status: 'Active',
+  },
+  {
+    id: 'demo-alert-2',
+    name: 'Sample Contract Dispute',
+    type: 'Case',
+    frequency: 'Daily',
+    status: 'Paused',
+  },
+  {
+    id: 'demo-alert-3',
+    name: 'Example Companies Act Provision',
+    type: 'Legislation',
+    frequency: 'Weekly',
+    status: 'Active',
+  },
+  {
+    id: 'demo-alert-4',
+    name: 'Example regulatory watch',
+    type: 'Regulatory update',
+    frequency: 'Weekly',
+    status: 'Paused',
+  },
+];
+export const workspace: WorkspaceOverview = {
+  updates: [
+    {
+      title: 'Example judgment added',
+      description: 'A fictional update for your contract research topic.',
+      category: 'New judgments',
+    },
+    {
+      title: 'Example provision update',
+      description: 'Demonstration of a legislation-change notification.',
+      category: 'Legislation',
+    },
+    {
+      title: 'Sample employment topic',
+      description: 'A preview of followed-topic updates. No real development.',
+      category: 'Followed topics',
+    },
+  ],
+  members: [
+    { name: 'Example workspace owner', role: 'Owner (preview)', email: 'owner@example.invalid' },
+    {
+      name: 'Example researcher',
+      role: 'Researcher (preview)',
+      email: 'researcher@example.invalid',
+    },
+  ],
+};

@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "project": {
+    "name": "Legal Intelligence web",
+    "productType": "professional legal research workspace",
+    "stack": ["Next.js", "React", "TypeScript", "Tailwind CSS", "Radix Dialog"]
+  },
+  "sources": {
+    "tokens": [],
+    "components": [],
+    "assets": [],
+    "instructions": ["AGENTS.md"]
+  },
+  "design": {
+    "colorMode": "light",
+    "colors": {
+      "navigation": "#13293d",
+      "accent": "#285b8b",
+      "canvas": "#f6f7f9",
+      "text": "#172b40"
+    },
+    "typography": {},
+    "spacing": {},
+    "radius": {},
+    "shadows": {},
+    "motion": {},
+    "density": "research-focused"
+  },
+  "components": {
+    "installed": [],
+    "preferredPrimitives": [],
+    "patterns": []
+  },
+  "constraints": {
+    "must": [],
+    "avoid": []
+  },
+  "decisions": [
+    "Navy navigation with a neutral document workspace.",
+    "Source text, metadata, synthesis and notes have distinct labels and presentation.",
+    "Demonstration labels remain visible in production builds.",
+    "21st inspiration search unavailable: HTTP 401; no community component was copied."
+  ],
+  "evidence": [
+    {
+      "fact": "project.instructions",
+      "source": "AGENTS.md"
+    }
+  ],
+  "generatedAt": "2026-09-20T09:02:10.689Z"
+}

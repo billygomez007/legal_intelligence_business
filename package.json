@@ -15,7 +15,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "depcruise": "depcruise apps packages --config .dependency-cruiser.cjs",
-    "test": "vitest run --project unit",
+    "test": "vitest run --project unit --project web",
     "test:integration": "vitest run --project integration",
     "test:all": "vitest run",
     "check": "pnpm format:check && pnpm typecheck && pnpm lint && pnpm depcruise && pnpm test",
@@ -24,7 +24,10 @@
     "db:status": "pnpm --filter @legalintel/migrate start status",
     "db:bootstrap": "pnpm --filter @legalintel/migrate start bootstrap",
     "db:test:clean": "pnpm --filter @legalintel/db db:test:clean",
-    "docs:permissions": "pnpm --filter @legalintel/iam docs:permissions"
+    "docs:permissions": "pnpm --filter @legalintel/iam docs:permissions",
+    "dev": "pnpm --filter @legalintel/web dev",
+    "build:web": "pnpm --filter @legalintel/web build",
+    "test:web": "pnpm --filter @legalintel/web test"
   },
   "devDependencies": {
     "@eslint/js": "catalog:",

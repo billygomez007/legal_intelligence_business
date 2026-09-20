@@ -15,3 +15,7 @@ build
 coverage
 .turbo
 **/generated/
+
+**/.next/
+**/playwright-report/
+**/test-results/
