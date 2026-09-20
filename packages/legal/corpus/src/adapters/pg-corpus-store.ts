@@ -30,6 +30,10 @@ interface PgErrorLike {
   hint?: unknown;
 }
 
+const SUPERSESSION_INVALID = 'corpus.supersession_invalid';
+const SUPERSESSION_MESSAGE =
+  'A version can only supersede an earlier version of the same document. Relationships between different documents belong in the citation graph.';
+
 /**
  * Database errors become typed errors with fixed messages. Driver text can quote table names
  * and values, so it never reaches a caller; the stable `code` is what clients act on.
@@ -122,8 +126,16 @@ export function mapCorpusError(error: unknown): unknown {
           'The passage hash does not match its text.',
         );
       }
+      if (c === 'document_versions_not_self_superseding') {
+        return validationError(SUPERSESSION_INVALID, SUPERSESSION_MESSAGE);
+      }
       return validationError('input.invalid', 'One or more values are not valid.');
     case '23503':
+      // Version succession is within one document (migration 0004): a version that does not
+      // exist and a version of a different document are the same mistake.
+      if (c === 'document_versions_supersedes_same_document') {
+        return validationError(SUPERSESSION_INVALID, SUPERSESSION_MESSAGE);
+      }
       return notFound(
         'corpus.reference_not_found',
         'A referenced record does not exist, or belongs to another jurisdiction.',
