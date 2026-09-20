@@ -36,3 +36,16 @@ catalog:
   '@opentelemetry/api': 1.9.1
   '@opentelemetry/sdk-trace-base': 2.11.0
   '@opentelemetry/context-async-hooks': 2.11.0
+  next: 16.3.5
+  react: 19.3.0
+  react-dom: 19.3.0
+  '@radix-ui/react-dialog': 1.1.23
+  lucide-react: 1.47.0
+  tailwindcss: 4.3.3
+  '@tailwindcss/postcss': 4.3.3
+  '@types/react': 19.3.0
+  '@types/react-dom': 19.3.0
+  '@testing-library/react': 16.3.3
+  '@testing-library/user-event': 14.6.1
+  jsdom: 30.1.0
+  '@playwright/test': 1.63.0

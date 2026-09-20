@@ -1,0 +1,146 @@
+/*
+ * LexGhana design tokens — the single source of truth for colour, type, geometry and motion.
+ *
+ * Rules (enforced by test/design-system.test.ts):
+ *  - Raw colour values (hex, rgb, hsl) exist ONLY in this file. Components use var(--token).
+ *  - Text/background pairs listed in the test meet WCAG AA contrast.
+ *  - Evidence "layers" (source / synthesis / metadata / note) have their own tokens so the four
+ *    kinds of content can never be styled the same by accident.
+ */
+:root {
+  color-scheme: dark;
+
+  /* ── Surfaces: deep navy → blue-black ─────────────────────────────────────── */
+  --bg: #06101d;
+  --bg-elevated: #091728;
+  --surface: #0d1d31;
+  --surface-strong: #11243b;
+  --surface-hover: #163049;
+  --surface-sunken: #081322;
+
+  /* ── Borders ──────────────────────────────────────────────────────────────── */
+  --border: #1f3652;
+  --border-subtle: #152a42;
+  --border-strong: #34547a;
+
+  /* ── Text ─────────────────────────────────────────────────────────────────── */
+  --fg: #f3ecdc;
+  --fg-secondary: #b8c2d0;
+  --fg-muted: #8b99ad;
+  --fg-inverse: #08111d;
+
+  /* ── Ghana gold ───────────────────────────────────────────────────────────── */
+  --gold: #d3a62d;
+  --gold-hover: #e4bc51;
+  --gold-muted: #8f7020;
+  --gold-soft: rgb(211 166 45 / 0.12);
+  --gold-tint: rgb(211 166 45 / 0.2);
+  --gold-border: rgb(211 166 45 / 0.4);
+  --gold-glow: rgb(211 166 45 / 0.09);
+  --navy-glow: rgb(46 96 160 / 0.22);
+
+  /* ── Status: restrained, never decorative ─────────────────────────────────── */
+  --success: #5cb98b;
+  --success-soft: rgb(92 185 139 / 0.14);
+  --warning: #dba842;
+  --warning-soft: rgb(219 168 66 / 0.14);
+  --info: #6fa5e4;
+  --info-soft: rgb(111 165 228 / 0.13);
+  --danger: #e37f75;
+  --danger-soft: rgb(227 127 117 / 0.14);
+
+  /*
+   * Evidence layers. Each kind of legal content has one colour, one label and one border style
+   * so source text, AI synthesis, structured metadata and user notes are never blurred together.
+   */
+  --layer-source: var(--gold);
+  --layer-source-soft: var(--gold-soft);
+  --layer-synthesis: var(--info);
+  --layer-synthesis-soft: var(--info-soft);
+  --layer-metadata: #9db0c9;
+  --layer-metadata-soft: rgb(157 176 201 / 0.09);
+  --layer-note: #cdbb96;
+  --layer-note-soft: rgb(205 187 150 / 0.08);
+
+  /* ── Typography ───────────────────────────────────────────────────────────── */
+  --font-ui:
+    var(--font-inter), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  --font-display:
+    var(--font-source-serif), 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia,
+    'Times New Roman', serif;
+  --fs-2xs: 0.6875rem;
+  --fs-xs: 0.75rem;
+  --fs-sm: 0.8125rem;
+  --fs-base: 0.9375rem;
+  --fs-md: 1rem;
+  --fs-lg: 1.125rem;
+  --fs-xl: 1.375rem;
+  --fs-2xl: 1.75rem;
+  --fs-3xl: 2.25rem;
+  --fs-4xl: 3rem;
+  --fs-5xl: 3.75rem;
+
+  /* ── Geometry ─────────────────────────────────────────────────────────────── */
+  --sidebar-width: 15.5rem;
+  --topbar-height: 4rem;
+  --content-max: 82rem;
+  --reading-max: 46rem;
+  --radius-sm: 0.375rem;
+  --radius-control: 0.5rem;
+  --radius-card: 0.75rem;
+  --radius-pill: 999px;
+
+  /* ── Elevation ────────────────────────────────────────────────────────────── */
+  --shadow-card: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 14px 32px -18px rgb(0 0 0 / 0.65);
+  --shadow-raised: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 24px 60px -24px rgb(0 0 0 / 0.75);
+  --shadow-gold: 0 10px 30px -14px rgb(211 166 45 / 0.55);
+  --ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--gold);
+
+  /* ── Spacing rhythm (4px base) ────────────────────────────────────────────── */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-24: 6rem;
+
+  /* ── Motion ───────────────────────────────────────────────────────────────── */
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur: 200ms;
+
+  /* ── Layering ─────────────────────────────────────────────────────────────── */
+  --z-sticky: 30;
+  --z-overlay: 60;
+  --z-drawer: 70;
+}
+
+/* Expose the tokens to Tailwind so utilities (bg-surface, text-fg-muted, border-line …) share them. */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-elevated: var(--bg-elevated);
+  --color-surface: var(--surface);
+  --color-surface-strong: var(--surface-strong);
+  --color-surface-hover: var(--surface-hover);
+  --color-line: var(--border);
+  --color-line-subtle: var(--border-subtle);
+  --color-fg: var(--fg);
+  --color-fg-secondary: var(--fg-secondary);
+  --color-fg-muted: var(--fg-muted);
+  --color-gold: var(--gold);
+  --color-gold-hover: var(--gold-hover);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+  --color-danger: var(--danger);
+  --font-sans: var(--font-ui);
+  --font-serif: var(--font-display);
+  --radius-card: var(--radius-card);
+  --radius-control: var(--radius-control);
+}

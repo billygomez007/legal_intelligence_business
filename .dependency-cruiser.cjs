@@ -8,6 +8,12 @@
 module.exports = {
   forbidden: [
     {
+      name: 'web-no-backend-imports',
+      severity: 'error',
+      from: { path: '^apps/web/' },
+      to: { path: '^packages/' },
+    },
+    {
       name: 'no-circular',
       severity: 'error',
       comment: 'Circular dependencies make modules impossible to extract or reason about.',
@@ -91,13 +97,14 @@ module.exports = {
     },
   ],
   options: {
+    exclude: { path: '(^|/)(\\.next|test-results|playwright-report)/' },
     doNotFollow: { path: 'node_modules' },
     tsPreCompilationDeps: true,
     tsConfig: { fileName: 'tsconfig.base.json' },
     enhancedResolveOptions: {
       exportsFields: ['exports'],
       conditionNames: ['import', 'require', 'node', 'default', 'types'],
-      extensions: ['.ts', '.js', '.json'],
+      extensions: ['.ts', '.tsx', '.js', '.jsx', '.json'],
     },
     reporterOptions: { text: { highlightFocused: true } },
   },

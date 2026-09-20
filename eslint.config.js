@@ -9,6 +9,9 @@ export default defineConfig(
     '**/build/**',
     '**/coverage/**',
     '**/.turbo/**',
+    '**/.next/**',
+    '**/playwright-report/**',
+    '**/test-results/**',
     '**/generated/**',
   ]),
 

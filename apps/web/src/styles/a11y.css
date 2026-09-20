@@ -1,0 +1,54 @@
+/*
+ * Accessibility and input-modality adjustments that sit on top of the token system.
+ * System colour keywords (Highlight, CanvasText) are allowed here: they are not raw colour values.
+ */
+@layer components {
+  /* A card whose whole surface is one link shows its focus on the card, not just the text. */
+  .project-card:has(a:focus-visible),
+  .quick-card:focus-visible {
+    border-color: var(--gold);
+    box-shadow: var(--ring);
+  }
+
+  /* Touch: meet a comfortable tap size for the small controls. */
+  @media (pointer: coarse) {
+    .button.sm {
+      min-height: 2.5rem;
+    }
+
+    .filter-chips a,
+    .anchor-nav a,
+    .settings-nav a {
+      padding-block: 0.6rem;
+    }
+
+    .nav-item {
+      min-height: 3rem;
+    }
+  }
+
+  /*
+   * Windows High Contrast / forced colours removes our tinted backgrounds, so state that relied on
+   * a tint must also be carried by an outline.
+   */
+  @media (forced-colors: active) {
+    .nav-item[aria-current='page'],
+    .tabs a[aria-current='page'],
+    .segmented button[aria-selected='true'],
+    .theme-choice[aria-pressed='true'],
+    .pill:has(input:checked) {
+      outline: 2px solid Highlight;
+      outline-offset: -2px;
+    }
+
+    .layer {
+      border-color: CanvasText;
+    }
+
+    .badge,
+    .demo-badge,
+    .court-badge {
+      border-color: CanvasText;
+    }
+  }
+}

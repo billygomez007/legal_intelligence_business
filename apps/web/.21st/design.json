@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "project": {
+    "name": "LexGhana Legal Intelligence",
+    "productType": "professional Ghanaian legal intelligence and research platform",
+    "stack": ["Next.js", "React", "TypeScript", "Tailwind CSS", "Radix Dialog"]
+  },
+  "sources": {
+    "tokens": ["src/app/globals.css"],
+    "components": ["src/components"],
+    "assets": [],
+    "instructions": ["AGENTS.md"]
+  },
+  "design": {
+    "colorMode": "dark",
+    "colors": {
+      "background": "#06101d",
+      "backgroundElevated": "#091728",
+      "surface": "#0d1d31",
+      "surfaceStrong": "#11243b",
+      "navigation": "#071321",
+      "accent": "#d3a62d",
+      "accentHover": "#e4bc51",
+      "text": "#f5f1e8",
+      "textSecondary": "#b4bfcc",
+      "textMuted": "#78889d",
+      "border": "#213956",
+      "success": "#5eaa7d"
+    },
+    "typography": {
+      "display": "Georgia, Times New Roman, serif",
+      "ui": "Arial, Helvetica, sans-serif"
+    },
+    "spacing": {
+      "density": "research-focused"
+    },
+    "radius": {
+      "small": "8px",
+      "medium": "12px",
+      "large": "18px"
+    },
+    "shadows": {
+      "panel": "0 20px 60px rgba(0,0,0,0.28)"
+    },
+    "motion": {
+      "level": "minimal"
+    },
+    "density": "professional-research"
+  },
+  "components": {
+    "installed": [],
+    "preferredPrimitives": ["Radix Dialog", "semantic HTML"],
+    "patterns": [
+      "fixed legal research sidebar",
+      "gold active navigation",
+      "dark authority surfaces",
+      "source provenance separation",
+      "responsive mobile navigation"
+    ]
+  },
+  "constraints": {
+    "must": [
+      "Keep demonstration labels visible",
+      "Distinguish source text from structured metadata and synthesis",
+      "Maintain accessible keyboard navigation",
+      "Use centralized design tokens"
+    ],
+    "avoid": [
+      "White SaaS dashboard",
+      "Purple AI gradients",
+      "Neon visual treatment",
+      "Invented real-looking legal authorities"
+    ]
+  },
+  "decisions": [
+    "LexGhana uses a deep navy and Ghana-gold institutional visual identity.",
+    "Serif typography is reserved for legal/editorial headings.",
+    "Source text, metadata, synthesis and notes remain visually distinct.",
+    "Demonstration labels remain visible in production builds."
+  ]
+}

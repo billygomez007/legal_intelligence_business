@@ -1,0 +1,12 @@
+{
+  "extends": ["//"],
+  "tasks": {
+    "typecheck": {
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/tsconfig.base.json"],
+      "outputs": []
+    },
+    "build": {
+      "outputs": [".next/**", "!.next/cache/**"]
+    }
+  }
+}

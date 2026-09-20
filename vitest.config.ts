@@ -9,12 +9,13 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     projects: [
+      './apps/web/vitest.config.ts',
       {
         test: {
           name: 'unit',
           environment: 'node',
           include: ['{apps,packages}/**/*.test.ts'],
-          exclude: ['**/*.integration.test.ts', '**/node_modules/**'],
+          exclude: ['**/*.integration.test.ts', '**/node_modules/**', 'apps/web/**'],
         },
       },
       {
