@@ -352,7 +352,19 @@ describe('a job cannot claim a result it has not earned', () => {
     await expect(handOff()).rejects.toMatchObject({ hint: 'ingestion.unvalidated_handoff' });
 
     await evidenceFor(passages.length - 1);
-    await handOff();
+    // Every record is in place, but a job cannot END awaiting review without its provenance
+    // attestation (checked when the transaction commits, so it cannot be forgotten).
+    await expect(handOff()).rejects.toMatchObject({ hint: 'ingestion.attestation_missing' });
+    expect(await h.store().get(hand.job.id)).not.toMatchObject({ status: 'pending_review' });
+
+    // The pipeline hands off and attests in one transaction.
+    await h.asIngest(async (tx) => {
+      await tx.query(
+        "UPDATE ingestion.jobs SET version_id = $2, status = 'pending_review', stage = 'review' WHERE id = $1",
+        [hand.job.id, hand.versionId],
+      );
+      await tx.query('SELECT ingestion.attest_provenance($1)', [hand.job.id]);
+    });
     expect(await h.store().get(hand.job.id)).toMatchObject({ status: 'pending_review' });
   });
 
@@ -463,6 +475,152 @@ describe('a job cannot claim a result it has not earned', () => {
   });
 });
 
+describe('provenance is attested only from evidence ingestion has verified', () => {
+  /** A job driven to the hand-off gate, with the transaction left for the test to finish. */
+  async function readyForHandOff() {
+    const hand = await handRolled(await h.world());
+    await hand.insertEvidence(hand.parsed.fields);
+    await h.asIngest(async (tx) => {
+      await corpusStore.addPassages(
+        tx,
+        hand.versionId,
+        hand.parsed.passages.map((p) => ({ ordinal: p.ordinal, locator: p.locator, text: p.text })),
+      );
+      await corpusStore.submitForReview(tx, hand.versionId);
+      await tx.query(
+        "INSERT INTO ingestion.review_tasks(job_id, version_id, reason) VALUES ($1, $2, 'validation_complete')",
+        [hand.job.id, hand.versionId],
+      );
+    });
+    const passages = await h.q<{ id: string; ordinal: number }>(
+      'SELECT id, ordinal FROM corpus.passages WHERE version_id = $1 ORDER BY ordinal',
+      [hand.versionId],
+    );
+    for (const passage of passages) {
+      const segment = hand.parsed.passages[passage.ordinal];
+      if (segment === undefined) throw new Error('missing passage');
+      await h.asIngest((tx) =>
+        tx.query(
+          `INSERT INTO ingestion.passage_evidence(passage_id, version_id, stable_key, start_offset, end_offset)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [passage.id, hand.versionId, hash(`${passage.ordinal}`), segment.start, segment.end],
+        ),
+      );
+    }
+    const handOff = (tx: Parameters<Parameters<Harness['asIngest']>[0]>[0]) =>
+      tx.query(
+        "UPDATE ingestion.jobs SET version_id = $2, status = 'pending_review', stage = 'review' WHERE id = $1",
+        [hand.job.id, hand.versionId],
+      );
+    return { hand, handOff };
+  }
+  const attestation = (versionId: string) =>
+    h.q('SELECT * FROM corpus.version_provenance_attestations WHERE version_id = $1', [versionId]);
+
+  it('refuses a job that has not passed the hand-off gate: queued, running, failed or needing review', async () => {
+    const w = await h.world();
+    const p = h.pipeline();
+    const queued = await p.request(h.operator(), h.prepare(w, syntheticDocument(unique('Queued'))));
+    const claimed = await p.request(
+      h.operator(),
+      h.prepare(w, syntheticDocument(unique('Running'))),
+    );
+    await h.store().claim(claimed.id);
+    const failed = await p.request(
+      h.operator(),
+      h.prepare(w, syntheticDocument(unique('Failed')), { provision: false }),
+    );
+    await p.run(failed.id); // the bytes are not there: a retryable failure
+    const needsReview = await h.ingestDocument(w, 'not a supported format', {
+      mediaType: 'application/pdf',
+    });
+    for (const id of [queued.id, claimed.id, failed.id, needsReview.id]) {
+      await expect(
+        h.asIngest((tx) => tx.query('SELECT ingestion.attest_provenance($1)', [id])),
+      ).rejects.toMatchObject({ hint: 'ingestion.attestation_not_ready' });
+    }
+    await expect(
+      h.asIngest((tx) => tx.query('SELECT ingestion.attest_provenance($1)', [randomUUID()])),
+    ).rejects.toMatchObject({ hint: 'ingestion.attestation_not_ready' });
+  });
+
+  it('re-checks that the rights allowing this processing hold now, not only at hand-off', async () => {
+    const { hand, handOff } = await readyForHandOff();
+    await expect(
+      h.asIngest(async (tx) => {
+        await handOff(tx);
+        // Rights are withdrawn (and committed) after the hand-off gate passed, before it attests.
+        await h.revoke(hand.w.sourceId);
+        await tx.query('SELECT ingestion.attest_provenance($1)', [hand.job.id]);
+      }),
+    ).rejects.toMatchObject({ hint: 'corpus.rights_denied' });
+    expect(await attestation(hand.versionId)).toHaveLength(0);
+    expect(await h.store().get(hand.job.id)).not.toMatchObject({ status: 'pending_review' });
+  });
+
+  it('is idempotent: attesting twice returns the same record and writes one', async () => {
+    const { hand, handOff } = await readyForHandOff();
+    const ids = await h.asIngest(async (tx) => {
+      await handOff(tx);
+      const first = await tx.query<{ id: string }>('SELECT ingestion.attest_provenance($1) AS id', [
+        hand.job.id,
+      ]);
+      const second = await tx.query<{ id: string }>(
+        'SELECT ingestion.attest_provenance($1) AS id',
+        [hand.job.id],
+      );
+      return [first.rows[0]?.id, second.rows[0]?.id];
+    });
+    expect(ids[0]).toBeDefined();
+    expect(ids[1]).toBe(ids[0]);
+    expect(await attestation(hand.versionId)).toHaveLength(1);
+  });
+
+  it('cannot be forged: no runtime role can write an attestation, whatever it claims', async () => {
+    const hand = await handRolled(await h.world());
+    for (const pool of [h.asIngest, h.asDataops, h.asApp]) {
+      await expect(
+        pool((tx) =>
+          tx.query(
+            `INSERT INTO corpus.version_provenance_attestations
+               (version_id, source_id, content_checksum, pipeline_version, attestation_type,
+                attestation_version, evidence_reference, system_identity)
+             SELECT id, source_id, content_checksum, pipeline_version, 'ingestion_pipeline', 1,
+                    'FABRICATED', 'ingestion-pipeline'
+               FROM corpus.document_versions WHERE id = $1`,
+            [hand.versionId],
+          ),
+        ),
+      ).rejects.toMatchObject({ code: '42501' });
+    }
+    // And the function is the ingest role's alone.
+    for (const pool of [h.asDataops, h.asApp]) {
+      await expect(
+        pool((tx) => tx.query('SELECT ingestion.attest_provenance($1)', [hand.job.id])),
+      ).rejects.toMatchObject({ code: '42501' });
+    }
+    expect(await attestation(hand.versionId)).toHaveLength(0);
+  });
+
+  it('leaves a version the pipeline did not hand off unable to be approved: the corpus asks for the attestation', async () => {
+    // A version created and submitted by hand, as a compromised writer might: it has passages and
+    // is awaiting review, but nothing attested where it came from.
+    const hand = await handRolled(await h.world());
+    await hand.insertEvidence(hand.parsed.fields);
+    await h.asIngest(async (tx) => {
+      await corpusStore.addPassages(
+        tx,
+        hand.versionId,
+        hand.parsed.passages.map((p) => ({ ordinal: p.ordinal, locator: p.locator, text: p.text })),
+      );
+      await corpusStore.submitForReview(tx, hand.versionId);
+    });
+    await expect(
+      h.asDataops((tx) => corpusStore.approveVersion(tx, hand.versionId, h.staff.reviewer)),
+    ).rejects.toMatchObject({ code: 'corpus.provenance_required' });
+  });
+});
+
 describe('review is a person deciding, recorded in the corpus and in ingestion', () => {
   const pendingJob = async (title = unique('Review')) => {
     const w = await h.world();
@@ -478,11 +636,15 @@ describe('review is a person deciding, recorded in the corpus and in ingestion',
       versionId: VersionId.parse(job.versionId ?? ''),
     };
   };
-  const decide = (
+  const decide = async (
     taskId: string,
     decision: 'approve' | 'reject' | 'hold',
     reasonCode = 'checked',
-  ) => h.review().decide(h.reviewer(), { taskId, decision, reasonCode });
+  ) => {
+    // Approval needs the publish-critical metadata verified by a person (corpus 0004).
+    if (decision === 'approve') await h.verifyCritical(taskId);
+    return h.review().decide(h.reviewer(), { taskId, decision, reasonCode });
+  };
 
   it('is not open to staff who were not given the permission', async () => {
     const { taskId } = await pendingJob();
@@ -666,6 +828,7 @@ describe('review is a person deciding, recorded in the corpus and in ingestion',
       [
         'artifact',
         'citations',
+        'criticalMetadata',
         'currentProcessingAllowed',
         'decisions',
         'extraction',
@@ -680,6 +843,24 @@ describe('review is a person deciding, recorded in the corpus and in ingestion',
     expect(before['currentProcessingAllowed']).toBe(true);
     expect(before['rightsEvidence']).toBe('SYNTHETIC-EVIDENCE');
     expect((before['passages'] as unknown[]).length).toBeGreaterThan(0);
+    // The reviewer is shown what a person must verify, with the fingerprint to quote.
+    const critical = before['criticalMetadata'] as {
+      field: string;
+      blocking: boolean;
+      valueSha256: string;
+    }[];
+    expect(critical.map((row) => row.field).sort()).toEqual([
+      'instrument_number',
+      'jurisdiction',
+      'title',
+    ]);
+    expect(
+      critical
+        .filter((row) => row.blocking)
+        .map((row) => row.field)
+        .sort(),
+    ).toEqual(['jurisdiction', 'title']);
+    expect(critical.find((row) => row.field === 'title')?.valueSha256).toMatch(/^[a-f0-9]{64}$/);
 
     await h.revoke(w.sourceId);
     expect((await h.review().packet(h.reviewer(), taskId))['currentProcessingAllowed']).toBe(false);
@@ -818,18 +999,26 @@ describe('the migrated schema', () => {
           'iam.create_organization',
           'iam.provision_user',
           'iam.resolve_identity',
+          'ingestion.attest_provenance',
         ],
       }),
     );
     expect(found, formatViolations(found)).toEqual([]);
   });
 
-  it('defines no SECURITY DEFINER function of its own, and installs no trigger on a corpus table', async () => {
+  it('defines exactly one SECURITY DEFINER function, the provenance attestation writer, and installs no trigger on a corpus table', async () => {
     const definers = await h.q<{ name: string }>(
       `SELECT p.proname AS name FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
         WHERE n.nspname = 'ingestion' AND p.prosecdef`,
     );
-    expect(definers).toEqual([]);
+    expect(definers).toEqual([{ name: 'attest_provenance' }]);
+    const [grants] = await h.q<Record<string, boolean>>(
+      `SELECT
+         has_function_privilege('legalintel_ingest', 'ingestion.attest_provenance(uuid)', 'EXECUTE') AS ingest,
+         has_function_privilege('legalintel_dataops', 'ingestion.attest_provenance(uuid)', 'EXECUTE') AS dataops,
+         has_function_privilege('legalintel_app', 'ingestion.attest_provenance(uuid)', 'EXECUTE') AS app`,
+    );
+    expect(grants).toEqual({ ingest: true, dataops: false, app: false });
 
     // Corpus tables carry only corpus-owned triggers: ingestion behaviour lives on ingestion tables.
     const foreign = await h.q<{ trigger: string }>(

@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-09-19
 - Stage: 3
+- Amended in part by [ADR-0008](0008-integrity-hardening-stages-0-5.md): the role-assignment hierarchy (who may grant and revoke which role) is now also enforced by the database, not only by the application.
 
 ## Context
 

@@ -9,6 +9,7 @@ import type {
   SourceId,
   VersionId,
 } from '../domain/ids';
+import { attestForTests, verifyForApproval, type AdminQuery } from './trust';
 
 /**
  * A small, obviously fake corpus for tests. Everything is labelled SYNTHETIC in its name and
@@ -38,6 +39,8 @@ export interface StaffIds {
 export interface SeedPools {
   readonly ingest: DbPool;
   readonly dataops: DbPool;
+  /** The owner path, used only to attest provenance (no runtime role can). */
+  readonly admin: AdminQuery;
 }
 
 export const SYNTHETIC_TEXT = [
@@ -141,6 +144,10 @@ export async function seedSyntheticCorpus(
       return { documentId, versionId, passageIds: passages.rows.map((row) => row.id) };
     });
 
+    // The approval gate needs the provenance attested and the critical metadata verified by a
+    // person first.
+    await attestForTests(pools.admin, draft.versionId);
+    await verifyForApproval({ dataops: pools.dataops }, draft.versionId, staff.reviewer);
     await withPublicTransaction(pools.dataops, async (tx) => {
       await corpusStore.approveVersion(tx, draft.versionId, staff.reviewer);
       await corpusStore.publishVersion(tx, draft.versionId, staff.publisher);

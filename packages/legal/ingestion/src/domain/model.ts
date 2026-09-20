@@ -96,6 +96,10 @@ const CATEGORY_BY_HINT: Readonly<Record<string, FailureCategory>> = {
   'corpus.review_not_pending': 'validation_failed',
   'corpus.review_not_ready': 'validation_failed',
   'corpus.review_decision_required': 'validation_failed',
+  'corpus.metadata_unverified': 'validation_failed',
+  'corpus.provenance_required': 'validation_failed',
+  'ingestion.attestation_not_ready': 'validation_failed',
+  'ingestion.attestation_missing': 'validation_failed',
 };
 const CATEGORY_BY_APP_CODE: Readonly<Record<string, FailureCategory>> = {
   'corpus.rights_denied': 'rights_denied',
@@ -104,6 +108,8 @@ const CATEGORY_BY_APP_CODE: Readonly<Record<string, FailureCategory>> = {
   'corpus.review_not_ready': 'validation_failed',
   'corpus.review_decision_required': 'validation_failed',
   'corpus.invalid_transition': 'validation_failed',
+  'corpus.metadata_unverified': 'validation_failed',
+  'corpus.provenance_required': 'validation_failed',
 };
 /** PostgreSQL condition classes that a retry can cure: connection, rollback, resources, shutdown. */
 const TRANSIENT_SQLSTATE_CLASSES = new Set(['08', '40', '53', '57']);

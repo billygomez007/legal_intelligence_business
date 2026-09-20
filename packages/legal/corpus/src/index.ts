@@ -4,5 +4,6 @@ export * from './domain/ids';
 export * from './domain/lifecycle';
 export * from './domain/relationships';
 export * from './domain/rights';
+export * from './domain/verification';
 export * from './migrations';
 export * from './startup-guard';

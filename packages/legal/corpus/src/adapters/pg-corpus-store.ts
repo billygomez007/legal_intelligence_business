@@ -23,12 +23,24 @@ import {
 import type { LifecycleState } from '../domain/lifecycle';
 import type { RelationshipType, ReviewStatus } from '../domain/relationships';
 import type { RightsStatus, RightsUse } from '../domain/rights';
+import type {
+  CriticalMetadataRow,
+  FieldRequirement,
+  MetadataField,
+  NewFieldVerification,
+  ProvenanceAttestation,
+  VerificationStatus,
+} from '../domain/verification';
 
 interface PgErrorLike {
   code?: unknown;
   constraint?: unknown;
   hint?: unknown;
 }
+
+const SUPERSESSION_INVALID = 'corpus.supersession_invalid';
+const SUPERSESSION_MESSAGE =
+  'A version can only supersede an earlier version of the same document. Relationships between different documents belong in the citation graph.';
 
 /**
  * Database errors become typed errors with fixed messages. Driver text can quote table names
@@ -93,6 +105,26 @@ export function mapCorpusError(error: unknown): unknown {
         'corpus.review_decision_required',
         'Approval requires the latest recorded review decision to be an approval by the approver.',
       );
+    case 'corpus.metadata_unverified':
+      return preconditionFailed(
+        'corpus.metadata_unverified',
+        'Publish-critical metadata must be verified by a person, and still match what they verified, before a version can be approved or published.',
+      );
+    case 'corpus.provenance_required':
+      return preconditionFailed(
+        'corpus.provenance_required',
+        'A version cannot be approved or published until its provenance has been attested by the pipeline that acquired it.',
+      );
+    case 'corpus.verification_stale':
+      return preconditionFailed(
+        'corpus.verification_stale',
+        'That verification does not match the value the corpus holds now, or the corpus holds no value for the field.',
+      );
+    case 'corpus.field_not_applicable':
+      return validationError(
+        'corpus.field_not_applicable',
+        'That field is not publish-critical for this kind of document.',
+      );
     default:
   }
 
@@ -122,8 +154,23 @@ export function mapCorpusError(error: unknown): unknown {
           'The passage hash does not match its text.',
         );
       }
+      if (c === 'document_versions_not_self_superseding') {
+        return validationError(SUPERSESSION_INVALID, SUPERSESSION_MESSAGE);
+      }
       return validationError('input.invalid', 'One or more values are not valid.');
     case '23503':
+      // Version succession is within one document (migration 0004): a version that does not
+      // exist and a version of a different document are the same mistake.
+      if (c === 'document_versions_supersedes_same_document') {
+        return validationError(SUPERSESSION_INVALID, SUPERSESSION_MESSAGE);
+      }
+      // An attestation must describe the version it is for (migration 0004).
+      if (c === 'attestation_matches_version') {
+        return validationError(
+          'corpus.provenance_mismatch',
+          'An attestation must name the source, content and pipeline version of the version it is for.',
+        );
+      }
       return notFound(
         'corpus.reference_not_found',
         'A referenced record does not exist, or belongs to another jurisdiction.',
@@ -367,6 +414,44 @@ export const corpusStore = {
     );
   },
 
+  /**
+   * Records, or corrects, the case details a PERSON took from the source: the court, the
+   * decision date and the identifiers. It replaces what was there, so it is for data-ops during
+   * review; a verification made before a change no longer matches and must be made again.
+   */
+  async recordCaseDetails(
+    tx: Tx,
+    input: {
+      documentId: DocumentId;
+      jurisdictionId: JurisdictionId;
+      courtId: CourtId;
+      decisionDate: string;
+      neutralCitation?: string;
+      docketNumber?: string;
+    },
+  ): Promise<void> {
+    await guard(() =>
+      tx.query(
+        `INSERT INTO corpus.case_details
+           (document_id, jurisdiction_id, court_id, decision_date, neutral_citation, docket_number)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (document_id) DO UPDATE
+           SET court_id = EXCLUDED.court_id,
+               decision_date = EXCLUDED.decision_date,
+               neutral_citation = EXCLUDED.neutral_citation,
+               docket_number = EXCLUDED.docket_number`,
+        [
+          input.documentId,
+          input.jurisdictionId,
+          input.courtId,
+          input.decisionDate,
+          input.neutralCitation ?? null,
+          input.docketNumber ?? null,
+        ],
+      ),
+    );
+  },
+
   async createVersion(tx: Tx, input: NewVersion): Promise<VersionId> {
     return guard(async () =>
       VersionId.parse(
@@ -463,6 +548,101 @@ export const corpusStore = {
         [input.versionId, input.decision, input.reasonCode, input.decidedBy],
       ),
     );
+  },
+
+  /**
+   * Every publish-critical field of a version for its kind of document: what the corpus holds,
+   * the fingerprint a verification must quote, the latest verification and whether the field
+   * still blocks approval. This is what a reviewer is shown and what the approval gate reads.
+   * Data-ops role.
+   */
+  async criticalMetadata(tx: Tx, versionId: VersionId): Promise<CriticalMetadataRow[]> {
+    return guard(async () => {
+      const result = await tx.query<{
+        field: MetadataField;
+        requirement: FieldRequirement;
+        current_value: string | null;
+        current_sha256: Buffer | null;
+        latest_status: VerificationStatus | null;
+        latest_by: string | null;
+        latest_at: Date | null;
+        is_current: boolean;
+        is_blocking: boolean;
+      }>('SELECT * FROM corpus.version_critical_metadata($1) ORDER BY field', [versionId]);
+      return result.rows.map((row) => ({
+        field: row.field,
+        requirement: row.requirement,
+        value: row.current_value,
+        valueSha256: row.current_sha256,
+        latestStatus: row.latest_status,
+        latestBy: row.latest_by,
+        latestAt: row.latest_at,
+        isCurrent: row.is_current,
+        blocking: row.is_blocking,
+      }));
+    });
+  },
+
+  /**
+   * Appends a person's verification of one field, bound to the value they saw. Never edited: a
+   * later record for the same field supersedes an earlier one. The database refuses a
+   * fingerprint that is not the value held now, a field that does not apply to the document,
+   * and a version that is not awaiting review; it writes the value and the time itself.
+   * Data-ops role. Returns the record id.
+   */
+  async recordFieldVerification(tx: Tx, input: NewFieldVerification): Promise<string> {
+    return guard(() =>
+      idOf(
+        tx,
+        `INSERT INTO corpus.version_field_verifications
+           (version_id, field, status, value_sha256, evidence_reference, verified_by)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+        [
+          input.versionId,
+          input.field,
+          input.status,
+          input.valueSha256,
+          input.evidenceReference,
+          input.verifiedBy,
+        ],
+      ),
+    );
+  },
+
+  /**
+   * The provenance attestations a version carries: which pipeline attested it, by which hand-off
+   * protocol, when. Read-only: no runtime role writes one (ingestion's checked function does).
+   * Data-ops and ingest roles.
+   */
+  async provenanceAttestations(tx: Tx, versionId: VersionId): Promise<ProvenanceAttestation[]> {
+    return guard(async () => {
+      const result = await tx.query<{
+        id: string;
+        attestation_type: string;
+        attestation_version: number;
+        pipeline_version: string;
+        evidence_reference: string;
+        system_identity: string;
+        actor_id: string | null;
+        attested_at: Date;
+      }>(
+        `SELECT id, attestation_type, attestation_version, pipeline_version, evidence_reference,
+                system_identity, actor_id, attested_at
+           FROM corpus.version_provenance_attestations
+          WHERE version_id = $1 ORDER BY sequence`,
+        [versionId],
+      );
+      return result.rows.map((row) => ({
+        id: row.id,
+        attestationType: row.attestation_type,
+        attestationVersion: row.attestation_version,
+        pipelineVersion: row.pipeline_version,
+        evidenceReference: row.evidence_reference,
+        systemIdentity: row.system_identity,
+        actorId: row.actor_id,
+        attestedAt: row.attested_at,
+      }));
+    });
   },
 
   /**

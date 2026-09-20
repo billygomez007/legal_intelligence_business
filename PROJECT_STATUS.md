@@ -53,6 +53,18 @@ The technical foundation is being built in stages around the planning docs, with
 
 Stage 5 ingests **synthetic and controlled-source text and HTML** into the corpus as versions awaiting human review, with rights checked at every step. It does not yet include PDF or OCR extraction, a Ghanaian judgment or legislation parser, pattern-based citation detection, a worker process, an API or any UI, and no real legal source or Ghanaian reference data has been acquired. Ingestion never approves or publishes. See [`docs/architecture/stage-5-ingestion.md`](docs/architecture/stage-5-ingestion.md), [`docs/runbooks/ingestion.md`](docs/runbooks/ingestion.md) and [`docs/reviews/stage-5-existing-implementation-review.md`](docs/reviews/stage-5-existing-implementation-review.md).
 
+### Integrity hardening of Stages 0–5 (2026-09-20, branch `hardening/stages-0-5-integrity`)
+Before the stack is merged, an independent review's remaining integrity gaps were closed with three forward migrations (`iam/0002`, `corpus/0004`, `ingestion/0002`), each enforced by the database and tested against direct SQL. Recorded in [ADR-0008](docs/adr/0008-integrity-hardening-stages-0-5.md).
+
+- Deployment tooling requires an explicit `APP_ENV`; the synthetic-data guards fail closed.
+- The role-assignment hierarchy is enforced by the database as well as by the application.
+- A version may supersede only a version of the same document.
+- The requester of an ingestion cannot approve it (ingestion; approval only).
+- Publish-critical metadata must be verified by a person, field by field, before approval; machine evidence is never edited or marked verified.
+- Approval and publication require a corpus-owned provenance attestation, written only by ingestion's checked function after its evidence checks pass.
+
+Not claimed: there is no reviewer-facing entry path for a legislation identifier or for correcting reviewed metadata, no protection against one person holding two accounts, and requester-is-not-approver is enforced at the ingestion mirror of a decision rather than in the corpus. See the known limits in ADR-0008. Remote CI has not run for these commits (the account restriction is unresolved); the evidence is the local gate recorded in the pull request.
+
 ### Founder decisions on Stage 5 (2026-09-19)
 - Revoked rights do not purge stored raw bytes automatically. The material becomes unusable at once for display, search, AI processing and redistribution; the bytes are restricted provenance and evidence only. Retention and deletion are a legal-policy decision not yet made. An audited purge workflow is designed, not built.
 - No real Ghanaian judgment or legislation is used as a fixture until source rights and licensing are confirmed. Fixtures stay clearly labelled synthetic.

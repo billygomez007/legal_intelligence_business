@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 
-import { getMigrationStatus } from '@legalintel/db';
+import { REQUIRED_ROLES, getMigrationStatus, runMigrations } from '@legalintel/db';
 import {
   checkGuardrails,
   createTestDatabase,
@@ -39,6 +39,27 @@ describe('all migration sets together', () => {
     );
   });
 
+  it('applies the three hardening migrations once, and re-running the whole chain changes nothing', async () => {
+    const status = await database.withMigrator((client) =>
+      getMigrationStatus(client, allMigrationSets),
+    );
+    for (const [set, version] of [
+      ['iam', 2],
+      ['corpus', 4],
+      ['ingestion', 2],
+    ] as const) {
+      expect(
+        status.find((row) => row.set === set && row.version === version)?.state,
+        `${set} ${version}`,
+      ).toBe('applied');
+    }
+    const again = await database.withMigrator((client) =>
+      runMigrations(client, { sets: allMigrationSets, requiredRoles: REQUIRED_ROLES }),
+    );
+    expect(again.applied).toEqual([]);
+    expect(again.alreadyApplied).toBe(status.length);
+  });
+
   it('pass every structural guardrail on the combined schema', async () => {
     const found = await database.withAdmin((client) =>
       checkGuardrails(client, {
@@ -55,6 +76,8 @@ describe('all migration sets together', () => {
           'iam.create_organization',
           'iam.provision_user',
           'iam.resolve_identity',
+          // Ingestion's sole writer of corpus provenance attestations (ingestion 0002).
+          'ingestion.attest_provenance',
         ],
       }),
     );

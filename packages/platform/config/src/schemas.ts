@@ -32,6 +32,20 @@ export const baseEnvSchema = z.object({
   LOG_LEVEL: z.enum(LOG_LEVELS).default('info'),
 });
 
+/**
+ * For deployment-sensitive entry points: migration and deploy tooling, and any composition root
+ * whose production safety checks are switched by the environment. There is deliberately NO
+ * default. `baseEnvSchema` defaults to development, which suits a developer's laptop and is
+ * wrong here: a deploy that forgot APP_ENV would read as "not production" and skip the checks
+ * (for example, the refusal to serve synthetic legal fixtures). Missing, blank or unrecognised
+ * values are refused before anything persistent is touched.
+ */
+export const deployEnvSchema = z.object({
+  APP_ENV: z.enum(APP_ENVIRONMENTS, {
+    error: `is required and must be exactly one of: ${APP_ENVIRONMENTS.join(', ')}`,
+  }),
+});
+
 export const databaseEnvSchema = z.object({
   DATABASE_URL: postgresUrl(),
   DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(200).default(10),

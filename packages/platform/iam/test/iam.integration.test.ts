@@ -515,7 +515,14 @@ describe('the last owner', () => {
 
     expect(outcomes.filter((o) => o.status === 'fulfilled')).toHaveLength(1);
     const failure = outcomes.find((o) => o.status === 'rejected');
-    expect(failure).toMatchObject({ reason: { code: 'org.last_owner' } });
+    // The loser is refused, and which refusal it meets depends on the interleaving. If both are
+    // still owners when each checks, the last-owner rule serialises them and the second finds no
+    // owner left (`org.last_owner`). If the winner has already committed, the loser is no longer
+    // an owner and the role hierarchy refuses it first (`authz.role_not_assignable`). Both are
+    // correct; what must never happen is two successes, or an organization with no owner.
+    const reason =
+      failure?.status === 'rejected' ? (failure.reason as { code?: string }) : undefined;
+    expect(['org.last_owner', 'authz.role_not_assignable']).toContain(reason?.code);
 
     const owners = await admin((c) =>
       c.query<{ n: string }>(

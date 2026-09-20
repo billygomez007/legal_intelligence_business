@@ -3,6 +3,7 @@
 - Reviewed: commit `313b2e1` on `stage-5/legal-ingestion` (the work found in the working tree, imported unmodified so it could be reviewed and diffed).
 - Plan it implements: [docs/architecture/stage-5-ingestion.md](../architecture/stage-5-ingestion.md) (`a3dab5d`).
 - Outcome: adopted as the canonical Stage 5 branch, **hardened**. Everything below is fixed in this branch unless it is marked DEFER.
+- Later hardening: the integrity gaps found by an independent review of Stages 0–5 (2026-09-20) were closed afterwards and are recorded in [ADR-0008](../adr/0008-integrity-hardening-stages-0-5.md); this document describes Stage 5 as it stood when it was reviewed and is not updated for them.
 - Founder decisions on the open items were recorded on 2026-09-19 (section 9). They add no code; the requirements are in [ingestion-retention-and-exceptions.md](../architecture/ingestion-retention-and-exceptions.md).
 
 ## 1. Method and posture

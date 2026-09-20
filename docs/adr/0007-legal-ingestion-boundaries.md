@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-09-19
 - Stage: 5
+- Amended in part by [ADR-0008](0008-integrity-hardening-stages-0-5.md): decisions 1 and 13 (ingestion now defines exactly one `SECURITY DEFINER` function, the checked writer of the corpus provenance attestation) and the known limit on human verification of metadata (now built for the critical fields).
 
 ## Context
 
@@ -14,7 +15,7 @@ The stage started from an existing implementation and plan produced outside this
 
 ### Ownership
 
-1. **A package owns the invariants of its own tables, and no others.** Corpus invariants (rights in force, the approval gate, passage immutability, what a source kind may be) live in the corpus package's migrations, added forward as `0003`; accepted migrations were not rewritten. The ingestion package owns its tables and installs **no trigger on a corpus table and no `SECURITY DEFINER` function**. It reads rights through `corpus.rights_decision_in_force` and moves versions through `corpusStore`. A guard keyed on a caller-set column (`pipeline_version LIKE 'ingestion/%'`), as the first implementation had, is not a guard.
+1. **A package owns the invariants of its own tables, and no others.** Corpus invariants (rights in force, the approval gate, passage immutability, what a source kind may be) live in the corpus package's migrations, added forward as `0003`; accepted migrations were not rewritten. The ingestion package owns its tables and installs **no trigger on a corpus table and no `SECURITY DEFINER` function** *(amended by ADR-0008: one narrowly scoped definer function was added, the sole writer of the corpus provenance attestation; there is still no trigger on a corpus table)*. It reads rights through `corpus.rights_decision_in_force` and moves versions through `corpusStore`. A guard keyed on a caller-set column (`pipeline_version LIKE 'ingestion/%'`), as the first implementation had, is not a guard.
 2. **Jobs, one per bounded artifact,** with stage events, rather than the `runs/items/stage_executions` sketch in docs/25. Each retry, lock, audit record and failure is bounded by one artifact.
 
 ### Rights
@@ -41,7 +42,7 @@ The stage started from an existing implementation and plan produced outside this
 
 ### Definer functions
 
-13. **`SECURITY DEFINER` is inventoried and enforced.** Every definer function must pin `search_path` with `pg_catalog` first, must not be executable by `PUBLIC`, must not use dynamic SQL, and outside `iam` must not reach a tenant table. `apps/migrate` holds the explicit inventory (six functions, none in ingestion); an unlisted or stale entry fails the build.
+13. **`SECURITY DEFINER` is inventoried and enforced.** Every definer function must pin `search_path` with `pg_catalog` first, must not be executable by `PUBLIC`, must not use dynamic SQL, and outside `iam` must not reach a tenant table. `apps/migrate` holds the explicit inventory (six functions, none in ingestion; *ADR-0008 adds `ingestion.attest_provenance`, making seven*); an unlisted or stale entry fails the build.
 
 ### Founder decisions on the open items, recorded 2026-09-19
 
@@ -65,7 +66,7 @@ Requirements and designs are in [ingestion-retention-and-exceptions.md](../archi
 
 - **PDF and OCR are not implemented** (`unsupported_format`, by design, until an isolated worker exists).
 - **No Ghanaian parser and no pattern-based citation detection.** Both need representative lawful samples and verified conventions that have not been provided (decisions 15 and 16). The one parser reads explicitly labelled lines and is for controlled and synthetic sources.
-- **Machine metadata cannot be marked verified** by any current path. Human verification of metadata is a separate append-only decision, not built.
+- **Machine metadata cannot be marked verified** by any current path. *(Amended by ADR-0008: a person's verification of the publish-critical fields is now a separate, append-only, field-level record, and approval requires it. Machine evidence still cannot be marked verified; verification never edits it.)*
 - **The database cannot know who the human is** (ADR-0006). `decided_by` comes from the authenticated staff user in application code; two accounts held by one person defeat the two-person rule.
 - **Raw artifacts of a source whose rights are withdrawn are retained, restricted to provenance and evidence** (decision 14). Retention and deletion are a legal-policy decision that has not been made. There is no purge and no audit of reads of raw storage (only the pipeline reads it today). The review packet still shows data-operations staff protected text after a revocation so a person can reject; whether that is itself a prohibited purpose is a question for counsel.
 - **Publication, withdrawal and rights changes are not audited** here (ADR-0006); approval and rejection through ingestion review are.

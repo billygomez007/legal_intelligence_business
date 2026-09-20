@@ -557,6 +557,11 @@ export class PgIngestionStore implements IngestionStore {
         `UPDATE ingestion.jobs SET version_id=$2,status='pending_review',stage='review' WHERE id=$1`,
         [job.id, versionId],
       );
+      // The corpus will not approve or publish a version until its provenance is attested. This
+      // checked database function is the only writer of that record, and it takes every value
+      // from the evidence the hand-off gate has just verified, so it cannot be made to attest
+      // something ingestion did not check. A job that ends awaiting review without it fails here.
+      await tx.query('SELECT ingestion.attest_provenance($1)', [job.id]);
       await event(tx, job, 'review', performance.now() - reviewStarted, 'success', decision);
     });
   }
