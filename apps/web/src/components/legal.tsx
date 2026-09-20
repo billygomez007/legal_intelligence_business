@@ -18,14 +18,15 @@ import type {
   VerificationState,
 } from '../data/types';
 import { Unavailable } from './ui/primitives';
+import { routes } from '../lib/routes';
 const verificationLabels: Record<VerificationState, string> = {
   verified: 'Verified',
   'human-reviewed': 'Human reviewed',
   'machine-extracted': 'Machine extracted',
   unverified: 'Unverified',
 };
-export function DemoBadge() {
-  return <span className="demo-badge">Demonstration data</span>;
+export function DemoBadge({ label = 'Demonstration data' }: { label?: string }) {
+  return <span className="demo-badge">{label}</span>;
 }
 export function VerificationBadge({ state }: { state: VerificationState }) {
   return (
@@ -56,14 +57,7 @@ export function CourtBadge({ court }: { court: string }) {
 }
 export function CitationChip({ citation }: { citation: Citation }) {
   return (
-    <Link
-      className="citation-chip"
-      href={
-        citation.passageId
-          ? `/sources/${citation.authorityId}#${citation.passageId}`
-          : `/sources/${citation.authorityId}`
-      }
-    >
+    <Link className="citation-chip" href={routes.source(citation.authorityId, citation.passageId)}>
       {citation.label}
       <ArrowUpRight size={12} aria-hidden="true" />
     </Link>
@@ -73,7 +67,7 @@ export function LegalCitation({ citation }: { citation: Citation }) {
   return <CitationChip citation={citation} />;
 }
 export function authorityHref(authority: LegalAuthority) {
-  return `/${authority.kind === 'case' ? 'cases' : 'legislation'}/${authority.id}`;
+  return authority.kind === 'case' ? routes.case(authority.id) : routes.legislation(authority.id);
 }
 export function AuthorityCard({ authority }: { authority: LegalAuthority }) {
   return (
@@ -154,7 +148,7 @@ export function SourceCard({ source }: { source: SourceReference }) {
         <RightsBadge state={source.authority.rights} />
       </div>
       <PassageViewer source={source} />
-      <Link className="text-link" href={`/sources/${source.documentId}`}>
+      <Link className="text-link" href={routes.source(source.documentId)}>
         Open source document <ArrowUpRight size={14} aria-hidden="true" />
       </Link>
     </article>
@@ -208,12 +202,12 @@ export function ResearchProjectCard({ project }: { project: ResearchProject }) {
       <FolderOpen size={21} aria-hidden="true" />
       <p className="micro">{project.reference}</p>
       <h3>
-        <Link href={`/research/${project.id}`}>{project.title}</Link>
+        <Link href={routes.researchProject(project.id)}>{project.title}</Link>
       </h3>
       <p>{project.question}</p>
       <div className="project-footer">
         <span>{project.authorityIds.length} saved authorities</span>
-        <span>{project.updated}</span>
+        <span>{project.updated.slice(0, 10)}</span>
       </div>
     </article>
   );

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import type { Alert, LegalAuthority, ResearchProject } from '../data/types';
 import { AuthorityCard } from './legal';
 import { Button, EmptyState } from './ui/primitives';
+import { routes } from '../lib/routes';
 export function DemoNotes({ initialNote }: { initialNote: string }) {
   const [note, setNote] = useState(initialNote);
   return (
@@ -81,7 +82,7 @@ export function LibraryView({
             .filter((p) => p.passageIds.length)
             .map((p) => (
               <p key={p.id}>
-                <a className="text-link" href={`/research/${p.id}`}>
+                <a className="text-link" href={routes.researchProject(p.id)}>
                   {p.title} · {p.passageIds.length} passages
                 </a>
               </p>
@@ -228,7 +229,7 @@ export function SettingsForm() {
             Example workspace. Access controls, session management and multi-factor authentication
             will be connected to the platform identity service.
           </p>
-          <a className="text-link" href="/organization">
+          <a className="text-link" href={routes.organization}>
             Open organization preview
           </a>
         </section>

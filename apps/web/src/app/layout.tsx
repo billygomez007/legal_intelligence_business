@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from 'next';
 import { Inter, Source_Serif_4 } from 'next/font/google';
 import type { ReactNode } from 'react';
 import { themeColor } from '../design/tokens';
-import { AppShell } from '../components/shell';
 import './globals.css';
 
 // Self-hosted at build time by next/font: no request to Google is made from the browser.
@@ -28,9 +27,7 @@ export const viewport: Viewport = { themeColor, colorScheme: 'dark' };
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={`${sans.variable} ${serif.variable}`}>
-      <body>
-        <AppShell>{children}</AppShell>
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

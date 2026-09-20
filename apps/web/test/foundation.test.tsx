@@ -1,18 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { AppShell, CommandSearch } from '../src/components/shell';
+import { AppShell } from '../src/components/shell/app-shell';
+import { CommandSearch } from '../src/components/shell/command-search';
 import { SourceCard } from '../src/components/legal';
 import { AskWorkbench } from '../src/components/ask-workbench';
 import { SearchFilters } from '../src/components/search-filters';
 import { AlertManager, LibraryView } from '../src/components/demo-interactions';
 import { webClients, emptySearch } from '../src/data/mock-clients';
-import Dashboard from '../src/app/page';
+import Dashboard from '../src/app/app/page';
 
 describe('legal research foundation', () => {
-  it('renders all navigation, skip link and persistent demonstration identity', () => {
+  it('renders all navigation, skip link and persistent demonstration identity', async () => {
+    const { profile } = await webClients.workspace.overview();
     render(
-      <AppShell>
+      <AppShell profile={profile}>
         <p>Workspace content</p>
       </AppShell>,
     );
@@ -35,7 +37,10 @@ describe('legal research foundation', () => {
   });
   it('renders the lawyer dashboard with explicitly synthetic recent research', async () => {
     render(await Dashboard());
-    expect(screen.getByRole('heading', { name: 'Ask Ghanaian Law' })).toBeDefined();
+    expect(screen.getByRole('heading', { name: 'Welcome back, Billy' })).toBeDefined();
+    expect(
+      screen.getByRole('heading', { name: 'Get clear answers from Ghanaian law' }),
+    ).toBeDefined();
     expect(screen.getByLabelText('Legal research question')).toBeDefined();
     expect(screen.getAllByText('Sample Contract Dispute').length).toBeGreaterThan(0);
     expect(screen.getByText('Illustrative updates, not real legal developments.')).toBeDefined();
@@ -60,7 +65,7 @@ describe('legal research foundation', () => {
     expect(screen.getByText('Source available · demo')).toBeDefined();
     expect(screen.getByText(/Document: sample-contract · Version: DEMO-v1/)).toBeDefined();
     expect(screen.getByRole('link', { name: /Open source document/ }).getAttribute('href')).toBe(
-      '/sources/sample-contract',
+      '/app/sources/sample-contract',
     );
   });
   it('keeps unavailable or restricted sources free of source text', async () => {
@@ -94,17 +99,17 @@ describe('legal research foundation', () => {
     const user = userEvent.setup();
     render(<CommandSearch />);
     await user.tab();
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: /Find a page/ }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /Search LexGhana/ }));
     await user.keyboard('{Enter}');
     expect(screen.getByRole('dialog')).toBeDefined();
-    expect(document.activeElement).toBe(screen.getByLabelText('Search pages'));
+    expect(document.activeElement).toBe(screen.getByLabelText('Search pages or authorities'));
     await user.keyboard('{Shift>}{Tab}{/Shift}');
     expect(document.activeElement).toBe(
       screen.getByRole('button', { name: 'Close command search' }),
     );
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).toBeNull();
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: /Find a page/ }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /Search LexGhana/ }));
   });
   it('filters library contents and supplies the report empty state', async () => {
     const user = userEvent.setup();

@@ -1,11 +1,22 @@
-import { EmptyState } from '../components/ui/primitives';
-export default function NotFound() {
+import Link from 'next/link';
+import { BrandMark } from '../components/brand/brand-mark';
+import { routes } from '../lib/routes';
+
+export default function RootNotFound() {
   return (
-    <EmptyState
-      title="This record isn’t available"
-      description="The requested page or demonstration record could not be found."
-      href="/search"
-      action="Browse demonstration authorities"
-    />
+    <main className="standalone-page">
+      <BrandMark href={routes.home} size="lg" />
+      <p className="eyebrow">Page not found</p>
+      <h1>This page isn’t part of LexGhana.</h1>
+      <p className="muted">The address may be mistyped, or the page may have moved.</p>
+      <div className="meta-row">
+        <Link className="button" href={routes.home}>
+          Go to LexGhana
+        </Link>
+        <Link className="button secondary" href={routes.app}>
+          Open the demonstration workspace
+        </Link>
+      </div>
+    </main>
   );
 }

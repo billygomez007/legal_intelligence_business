@@ -5,3 +5,5 @@
 @import '../styles/base.css';
 @import '../styles/components.css';
 @import '../styles/brand.css';
+@import '../styles/app-shell.css';
+@import '../styles/dashboard.css';

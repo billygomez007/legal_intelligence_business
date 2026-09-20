@@ -78,11 +78,18 @@ export interface SearchQuery {
   practiceArea: string;
   concept: string;
 }
+export type ResearchStatus = 'In progress' | 'Needs review' | 'Draft';
+
 export interface ResearchProject {
   id: string;
   title: string;
   question: string;
   reference: string;
+  practiceArea: string;
+  /** Court or source placeholder. Always an obviously synthetic "Example …" name. */
+  source: string;
+  status: ResearchStatus;
+  /** ISO timestamp. */
   updated: string;
   authorityIds: string[];
   passageIds: string[];
@@ -106,11 +113,59 @@ export interface LegalAnswer {
 export interface Alert {
   id: string;
   name: string;
-  type: 'Topic' | 'Case' | 'Legislation' | 'Regulatory update';
+  type: 'Topic' | 'Case' | 'Legislation' | 'Regulatory';
   frequency: 'Daily' | 'Weekly';
   status: 'Active' | 'Paused';
 }
+export interface UserProfile {
+  name: string;
+  firstName: string;
+  initials: string;
+  email: string;
+  /** Shown under the name in the sidebar, e.g. "Law Firm". */
+  organisationType: string;
+}
+
+export interface ActivityMetric {
+  id: 'searches' | 'authorities' | 'projects' | 'alerts';
+  label: string;
+  value: number;
+  /** Percentage change against the previous period. Demonstration figure. */
+  change: number;
+}
+
+export interface ActivityPeriod {
+  id: string;
+  label: string;
+  metrics: ActivityMetric[];
+}
+
+export type LegalUpdateCategory =
+  'New judgments' | 'Legislation updates' | 'Followed topics' | 'Regulatory updates';
+
+export interface LegalUpdate {
+  id: string;
+  category: LegalUpdateCategory;
+  title: string;
+  description: string;
+  /** ISO timestamp. */
+  at: string;
+}
+
+export interface WorkspaceMember {
+  name: string;
+  role: string;
+  email: string;
+  status: 'Active' | 'Invited';
+}
+
 export interface WorkspaceOverview {
-  updates: { title: string; description: string; category: string }[];
-  members: { name: string; role: string; email: string }[];
+  /** The demonstration clock. Relative times ("2 hours ago") are computed against this. */
+  asOf: string;
+  profile: UserProfile;
+  activity: ActivityPeriod[];
+  /** Authorities the user has saved, most recent first. */
+  savedAuthorityIds: string[];
+  updates: LegalUpdate[];
+  members: WorkspaceMember[];
 }

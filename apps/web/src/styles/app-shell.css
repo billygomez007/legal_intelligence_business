@@ -1,0 +1,428 @@
+/*
+ * Authenticated app frame: fixed sidebar, compact top bar, page frame and the shared page-level
+ * headings. Bands (top bar, notice, content, footer) all align to the same content edges.
+ */
+@layer components {
+  .app-shell {
+    min-height: 100vh;
+  }
+
+  /* ── Sidebar ─────────────────────────────────────────────────────────────── */
+  .sidebar {
+    display: none;
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: var(--z-sticky);
+    width: var(--sidebar-width);
+    border-right: 1px solid var(--border-subtle);
+    background: linear-gradient(180deg, var(--bg-elevated), var(--bg));
+  }
+
+  .sidebar-inner {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: var(--space-5) var(--space-3) var(--space-4);
+    overflow-y: auto;
+  }
+
+  .sidebar-brand {
+    padding: var(--space-1) var(--space-3) var(--space-8);
+  }
+
+  .sidebar-nav ul {
+    display: grid;
+    gap: var(--space-1);
+  }
+
+  .nav-divider {
+    margin: var(--space-4) var(--space-3);
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    min-height: 2.875rem;
+    padding: 0 var(--space-4);
+    border: 1px solid transparent;
+    border-radius: var(--radius-control);
+    color: var(--fg-secondary);
+    font-size: var(--fs-md);
+    font-weight: 500;
+    transition:
+      background var(--dur-fast) var(--ease),
+      color var(--dur-fast) var(--ease);
+  }
+
+  .nav-item svg {
+    flex: none;
+    color: var(--fg-muted);
+    transition: color var(--dur-fast) var(--ease);
+  }
+
+  .nav-item:hover {
+    background: var(--surface-strong);
+    color: var(--fg);
+  }
+
+  .nav-item:hover svg {
+    color: var(--fg-secondary);
+  }
+
+  /* Active: gold-tinted fill, gold hairline and a gold edge. Not colour alone: aria-current too. */
+  .nav-item[aria-current='page'] {
+    border-color: var(--gold-border);
+    background: linear-gradient(90deg, var(--gold-tint), var(--gold-soft));
+    box-shadow: inset 3px 0 0 var(--gold);
+    color: var(--fg);
+  }
+
+  .nav-item[aria-current='page'] svg {
+    color: var(--gold-hover);
+  }
+
+  .sidebar-foot {
+    display: grid;
+    gap: var(--space-4);
+    margin-top: auto;
+    padding-top: var(--space-6);
+  }
+
+  .user-menu {
+    position: relative;
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .user-card {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    width: 100%;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid transparent;
+    border-radius: var(--radius-control);
+    background: transparent;
+    text-align: left;
+    transition: background var(--dur-fast) var(--ease);
+  }
+
+  .user-card:hover {
+    background: var(--surface-strong);
+  }
+
+  .avatar {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+    background: linear-gradient(140deg, var(--gold-hover), var(--gold-muted));
+    color: var(--fg-inverse);
+    font-size: var(--fs-sm);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+
+  .user-meta {
+    display: grid;
+    flex: 1;
+    min-width: 0;
+    line-height: 1.3;
+  }
+
+  .user-name {
+    font-weight: 600;
+    color: var(--fg);
+  }
+
+  .user-org {
+    font-size: var(--fs-sm);
+    color: var(--fg-secondary);
+  }
+
+  .user-chevron {
+    flex: none;
+    color: var(--fg-muted);
+    transition: transform var(--dur) var(--ease);
+  }
+
+  .user-card[aria-expanded='true'] .user-chevron {
+    transform: rotate(180deg);
+  }
+
+  .user-popover {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + var(--space-2));
+    left: 0;
+    display: grid;
+    gap: 2px;
+    padding: var(--space-2);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-card);
+    background: var(--surface-strong);
+    box-shadow: var(--shadow-raised);
+  }
+
+  .user-popover a {
+    display: block;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+    color: var(--fg-secondary);
+    font-size: var(--fs-sm);
+  }
+
+  .user-popover a:hover {
+    background: var(--surface-hover);
+    color: var(--fg);
+  }
+
+  .user-popover-note {
+    padding: var(--space-2) var(--space-3);
+    border-top: 1px solid var(--border-subtle);
+    font-size: var(--fs-xs);
+    color: var(--fg-muted);
+  }
+
+  .brand-line {
+    display: grid;
+    gap: 0.125rem;
+    padding: var(--space-4) var(--space-3) 0;
+    border-top: 1px solid var(--border-subtle);
+    color: var(--fg-muted);
+    font-size: var(--fs-sm);
+    line-height: 1.5;
+  }
+
+  /* ── Mobile / tablet drawer ──────────────────────────────────────────────── */
+  .mobile-drawer {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: var(--z-drawer);
+    width: min(19rem, 88vw);
+    border-right: 1px solid var(--border);
+    background: linear-gradient(180deg, var(--bg-elevated), var(--bg));
+    box-shadow: var(--shadow-raised);
+    animation: drawer-in var(--dur) var(--ease);
+  }
+
+  .mobile-drawer .sidebar-brand {
+    padding-right: var(--space-12);
+  }
+
+  @keyframes drawer-in {
+    from {
+      transform: translateX(-100%);
+    }
+  }
+
+  /* ── Main column ─────────────────────────────────────────────────────────── */
+  .app-main {
+    --gutter: clamp(1rem, 3vw, 2rem);
+    --edge: max(var(--gutter), calc((100% - var(--content-max)) / 2));
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 100vh;
+  }
+
+  @media (min-width: 64rem) {
+    .sidebar {
+      display: block;
+    }
+
+    .app-main {
+      margin-left: var(--sidebar-width);
+    }
+
+    .mobile-menu {
+      display: none;
+    }
+  }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: var(--z-sticky);
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    height: var(--topbar-height);
+    padding-inline: var(--edge);
+    background: color-mix(in srgb, var(--bg) 78%, transparent);
+    backdrop-filter: blur(12px);
+  }
+
+  .topbar-spacer {
+    flex: 1;
+  }
+
+  .command-trigger {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    width: min(100%, 26rem);
+    min-height: 2.75rem;
+    padding: 0 var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-control);
+    background: var(--surface);
+    color: var(--fg-muted);
+    text-align: left;
+    transition:
+      border-color var(--dur-fast) var(--ease),
+      background var(--dur-fast) var(--ease);
+  }
+
+  .command-trigger:hover {
+    border-color: var(--border-strong);
+    background: var(--surface-strong);
+    color: var(--fg-secondary);
+  }
+
+  .command-trigger-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  kbd {
+    padding: 0.1rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-strong);
+    color: var(--fg-muted);
+    font-family: var(--font-ui);
+    font-size: var(--fs-xs);
+    white-space: nowrap;
+  }
+
+  /* A keyboard shortcut hint is noise on touch devices and in narrow layouts. */
+  @media (max-width: 40rem), (hover: none) {
+    .command-trigger kbd {
+      display: none;
+    }
+  }
+
+  .command-list {
+    display: grid;
+    gap: 2px;
+  }
+
+  .command-list a {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-control);
+    color: var(--fg-secondary);
+  }
+
+  .command-list a:hover {
+    background: var(--surface-hover);
+    color: var(--fg);
+  }
+
+  .notify {
+    position: relative;
+  }
+
+  .notify-dot {
+    position: absolute;
+    top: 0.55rem;
+    right: 0.6rem;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: var(--gold);
+    box-shadow: 0 0 0 2px var(--surface);
+  }
+
+  .demo-strip {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-3);
+    padding: var(--space-1) var(--edge) 0;
+    color: var(--fg-muted);
+    font-size: var(--fs-xs);
+  }
+
+  .app-content {
+    flex: 1;
+    container: page / inline-size;
+    /* Safety net: decorative art must never cause horizontal page scroll. `clip` keeps sticky working. */
+    overflow-x: clip;
+    padding: var(--space-4) var(--edge) var(--space-12);
+  }
+
+  .app-footer {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: var(--space-2) var(--space-6);
+    padding: var(--space-4) var(--edge);
+    border-top: 1px solid var(--border-subtle);
+    color: var(--fg-muted);
+    font-size: var(--fs-xs);
+  }
+
+  /* ── Page-level headings shared by every app page ────────────────────────── */
+  .page-heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: var(--space-4);
+    margin-bottom: var(--space-6);
+    padding-top: var(--space-2);
+  }
+
+  .page-heading h1 {
+    margin: var(--space-2) 0;
+    font-size: clamp(var(--fs-2xl), 3.4vw, var(--fs-3xl));
+  }
+
+  .page-heading p.muted {
+    max-width: 44rem;
+  }
+
+  .section-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
+  }
+
+  .section-heading h2 {
+    font-size: var(--fs-xs);
+    font-weight: 650;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--gold);
+  }
+
+  .section-heading .text-link {
+    color: var(--fg-secondary);
+  }
+
+  .section-heading .text-link:hover {
+    color: var(--gold-hover);
+  }
+
+  /* Root-level pages that live outside any shell (404). */
+  .standalone-page {
+    display: grid;
+    justify-items: start;
+    gap: var(--space-4);
+    width: min(36rem, calc(100% - 2rem));
+    margin: 0 auto;
+    padding: var(--space-24) 0;
+  }
+}

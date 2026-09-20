@@ -10,6 +10,7 @@ import {
 import { DemoNotes } from '../components/demo-interactions';
 import { EmptyState } from '../components/ui/primitives';
 import type { Authority, SourceReference } from '../data/types';
+import { routes } from '../lib/routes';
 export function AuthorityDetail({
   authority,
   source,
@@ -21,7 +22,7 @@ export function AuthorityDetail({
   related: Authority[];
   view: string;
 }) {
-  const base = `/${authority.kind === 'case' ? 'cases' : 'legislation'}/${authority.id}`;
+  const detail = authority.kind === 'case' ? routes.case : routes.legislation;
   const tabs = [
     { id: 'overview', label: 'Overview' },
     { id: 'full', label: authority.kind === 'case' ? 'Full judgment' : 'Provisions' },
@@ -32,7 +33,7 @@ export function AuthorityDetail({
   const selected = tabs.some((t) => t.id === view) ? view : 'overview';
   return (
     <>
-      <Link className="text-link back-link" href="/search">
+      <Link className="text-link back-link" href={routes.search}>
         ← Back to authorities
       </Link>
       <p className="eyebrow">{authority.kind} · Ghana · synthetic record</p>
@@ -46,7 +47,7 @@ export function AuthorityDetail({
         {tabs.map((tab) => (
           <Link
             key={tab.id}
-            href={`${base}?view=${tab.id}`}
+            href={detail(authority.id, tab.id)}
             aria-current={selected === tab.id ? 'page' : undefined}
           >
             {tab.label}
@@ -233,7 +234,7 @@ function ProvisionTree({ authority }: { authority: Extract<Authority, { kind: 'l
         <details open key={part.title}>
           <summary>{part.title}</summary>
           {part.provisions.map((provision) => (
-            <Link key={provision.id} href={`/sources/${authority.id}#${provision.passageId}`}>
+            <Link key={provision.id} href={routes.source(authority.id, provision.passageId)}>
               {provision.label} · {provision.heading}
             </Link>
           ))}

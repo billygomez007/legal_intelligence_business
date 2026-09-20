@@ -1,6 +1,7 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 import Link from 'next/link';
 import { ArrowUpRight, FileQuestion, SearchX, ShieldAlert } from 'lucide-react';
+import { routes } from '../../lib/routes';
 export function Button({ className = '', ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
   return <button className={`button ${className}`} {...props} />;
 }
@@ -78,7 +79,7 @@ export function ErrorState({ retry }: { retry?: () => void }) {
       <h2>We couldn’t load this view</h2>
       <p>Your request could not be completed. Please try again.</p>
       {retry && <Button onClick={retry}>Try again</Button>}
-      <Link className="text-link" href="/">
+      <Link className="text-link" href={routes.app}>
         Return to dashboard
       </Link>
     </div>
