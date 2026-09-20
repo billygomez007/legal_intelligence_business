@@ -1,5 +1,9 @@
 import {
   Bell,
+  BriefcaseBusiness,
+  CalendarClock,
+  CalendarDays,
+  ContactRound,
   CreditCard,
   FolderOpen,
   LayoutDashboard,
@@ -33,11 +37,15 @@ export const primaryNavigation: readonly NavItem[] = [
     also: ['/app/cases', '/app/legislation', '/app/sources'],
   },
   { href: routes.research, label: 'Research', icon: FolderOpen },
+  { href: routes.matters, label: 'Matters', icon: BriefcaseBusiness },
+  { href: routes.appointments, label: 'Appointments', icon: CalendarDays },
+  { href: routes.calendar, label: 'Deadlines & Calendar', icon: CalendarClock },
   { href: routes.library, label: 'Library', icon: Library },
   { href: routes.alerts, label: 'Alerts', icon: Bell },
 ];
 
 export const secondaryNavigation: readonly NavItem[] = [
+  { href: routes.clients, label: 'Clients', icon: ContactRound },
   { href: routes.organization, label: 'Organization', icon: Users },
   { href: routes.billing, label: 'Billing & Subscription', icon: CreditCard },
   { href: routes.settings, label: 'Settings', icon: Settings },

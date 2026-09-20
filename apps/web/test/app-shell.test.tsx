@@ -47,14 +47,19 @@ describe('LexGhana application shell', () => {
       'Ask the Law',
       'Search',
       'Research',
+      'Matters',
+      'Appointments',
+      'Deadlines & Calendar',
       'Library',
       'Alerts',
+      'Clients',
       'Organization',
       'Billing & Subscription',
       'Settings',
     ]);
-    expect(primaryNavigation).toHaveLength(6);
+    expect(primaryNavigation).toHaveLength(9);
     expect(secondaryNavigation.map((item) => item.label)).toEqual([
+      'Clients',
       'Organization',
       'Billing & Subscription',
       'Settings',
@@ -131,7 +136,7 @@ describe('mobile navigation', () => {
     await user.click(trigger);
     const dialog = screen.getByRole('dialog', { name: 'Workspace navigation' });
     const nav = within(dialog).getByRole('navigation', { name: 'Main navigation' });
-    expect(within(nav).getAllByRole('link')).toHaveLength(9);
+    expect(within(nav).getAllByRole('link')).toHaveLength(13);
     expect(within(dialog).getByRole('button', { name: 'Close navigation' })).toBeDefined();
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).toBeNull();
