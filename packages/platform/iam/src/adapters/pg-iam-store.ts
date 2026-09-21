@@ -187,6 +187,7 @@ export const pgIamStore: IamStore = {
         `SELECT o.id, o.name, o.slug::text AS slug, o.kind, o.status
            FROM iam.memberships m
            JOIN iam.organizations o ON o.id = m.organization_id
+           JOIN iam.users u ON u.id = m.user_id AND u.status = 'active'
           WHERE m.user_id = app.current_user_id() AND m.status = 'active'
           ORDER BY o.name`,
       );
@@ -211,6 +212,7 @@ export const pgIamStore: IamStore = {
         `SELECT m.status,
                 coalesce(array_agg(r.role_key) FILTER (WHERE r.role_key IS NOT NULL), '{}') AS roles
            FROM iam.memberships m
+           JOIN iam.users u ON u.id = m.user_id AND u.status = 'active'
            LEFT JOIN iam.role_assignments r
              ON r.organization_id = m.organization_id AND r.user_id = m.user_id
           WHERE m.organization_id = app.current_org_id() AND m.user_id = $1

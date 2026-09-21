@@ -1,0 +1,25 @@
+{
+  "name": "@legalintel/knowledge",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@legalintel/audit": "workspace:*",
+    "@legalintel/db": "workspace:*",
+    "@legalintel/iam": "workspace:*",
+    "@legalintel/kernel": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

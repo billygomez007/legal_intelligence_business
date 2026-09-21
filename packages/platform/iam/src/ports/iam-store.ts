@@ -82,11 +82,12 @@ export interface IamStore {
     tx: StoreTx,
     input: { name: string; slug: string; kind: OrganizationKind },
   ): Promise<OrganizationId>;
-  /** user: the organizations the calling user is an active member of. */
+  /** user: organizations of an active account with active memberships. */
   listMyOrganizations(tx: StoreTx): Promise<OrganizationSummary[]>;
 
   /** tenant: the current organization. */
   loadOrganization(tx: StoreTx): Promise<OrganizationSummary | null>;
+  /** tenant: membership of an active account, or null; used to resolve effective access. */
   loadMembership(tx: StoreTx, userId: UserId): Promise<MembershipRecord | null>;
   listMembers(tx: StoreTx): Promise<MemberSummary[]>;
   addMember(tx: StoreTx, userId: UserId, status?: MembershipStatus): Promise<void>;

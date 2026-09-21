@@ -629,6 +629,64 @@ describe('who can do what (application rules over the real database)', () => {
   });
 });
 
+describe('account status applies to every organization authentication path', () => {
+  it.each(['suspended', 'deleted'] as const)(
+    'refuses an %s account despite its active membership and unrevoked API key',
+    async (status) => {
+      const owner = await newUser(`account-${status}`);
+      const org = await newOrg(owner);
+      const context = await loadUserContext(deps, owner, org);
+      const issued = await asTenant(org, owner, (tx) =>
+        issueApiKey(
+          tx,
+          pgIamStore,
+          catalog,
+          context,
+          { name: 'account-status', scopes: ['corpus:read'] },
+          clock,
+        ),
+      );
+      await expect(authenticateApiKey(deps, issued.plaintext)).resolves.toMatchObject({
+        organizationId: org,
+      });
+      await expect(
+        withUserTransaction(pool, owner, (tx) => pgIamStore.listMyOrganizations(tx)),
+      ).resolves.toHaveLength(1);
+
+      await admin((c) =>
+        c.query('UPDATE iam.users SET status = $2 WHERE id = $1', [owner, status]),
+      );
+
+      // A previously authenticated identity must not bypass the current account state.
+      await expect(loadUserContext(deps, owner, org)).rejects.toMatchObject({
+        kind: 'not_found',
+        code: 'organization.not_found',
+      });
+      // API-key resolution has an organization context but deliberately no acting user.
+      await expect(authenticateApiKey(deps, issued.plaintext)).rejects.toMatchObject({
+        kind: 'unauthenticated',
+        code: 'auth.invalid_api_key',
+        message: 'Invalid API key.',
+      });
+      await expect(
+        withUserTransaction(pool, owner, (tx) => pgIamStore.listMyOrganizations(tx)),
+      ).resolves.toEqual([]);
+
+      // Disable access without deleting memberships, role history or key records.
+      const preserved = await admin((c) =>
+        c.query<{ membership_status: string; revoked_at: Date | null }>(
+          `SELECT m.status AS membership_status, k.revoked_at
+             FROM iam.memberships m JOIN iam.api_keys k
+               ON k.organization_id = m.organization_id AND k.created_by = m.user_id
+            WHERE k.id = $1`,
+          [issued.record.id],
+        ),
+      );
+      expect(preserved.rows).toEqual([{ membership_status: 'active', revoked_at: null }]);
+    },
+  );
+});
+
 describe('API keys', () => {
   async function scenario() {
     const owner = await newUser('key-owner');

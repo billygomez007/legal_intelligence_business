@@ -197,28 +197,50 @@ export class PgIngestionStore implements IngestionStore {
   async withLock<T>(id: string, work: () => Promise<T>): Promise<T | null> {
     const client = await this.pool.connect();
     let destroy = false;
+    let connectionError: Error | undefined;
+    const onConnectionError = (error: Error) => {
+      connectionError ??= error;
+    };
+    client.on('error', onConnectionError);
+    const assertConnected = () => {
+      if (connectionError !== undefined) throw connectionError;
+    };
     try {
       const r = await client.query<{ locked: boolean }>(
         'SELECT pg_try_advisory_lock(hashtextextended($1,$2)) AS locked',
         [id, LOCK_NAMESPACE.job],
       );
+      assertConnected();
       if (r.rows[0]?.locked !== true) return null;
+      let result: T;
       try {
-        return await work();
+        result = await work();
       } finally {
-        try {
-          await client.query('SELECT pg_advisory_unlock(hashtextextended($1,$2))', [
-            id,
-            LOCK_NAMESPACE.job,
-          ]);
-        } catch {
-          destroy = true;
+        if (connectionError === undefined) {
+          try {
+            await client.query('SELECT pg_advisory_unlock(hashtextextended($1,$2))', [
+              id,
+              LOCK_NAMESPACE.job,
+            ]);
+          } catch {
+            destroy = true;
+          }
         }
       }
+      // A dropped session also loses its lock. Never report that run as successful.
+      assertConnected();
+      return result;
+    } catch (error) {
+      throw connectionError ?? error;
     } finally {
-      client.release(destroy);
+      try {
+        client.release(connectionError ?? destroy);
+      } finally {
+        client.removeListener('error', onConnectionError);
+      }
     }
   }
+
   async claim(id: string): Promise<Job | null> {
     try {
       const outcome = await this.tryClaim(id);

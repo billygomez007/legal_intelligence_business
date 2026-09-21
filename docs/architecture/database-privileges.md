@@ -17,6 +17,10 @@ Reviewing a migration? A change to this file is a change to what a role can do.
 | `corpus` | USAGE |
 | `graph` | USAGE |
 | `iam` | USAGE |
+| `knowledge` | USAGE |
+| `matter_documents` | USAGE |
+| `policy` | USAGE |
+| `workspace` | USAGE |
 
 ### table
 
@@ -38,6 +42,13 @@ Reviewing a migration? A change to this file is a change to what a role can do.
 | `iam.platform_role_assignments` | SELECT |
 | `iam.role_assignments` | DELETE, INSERT, SELECT |
 | `iam.users` | SELECT |
+| `knowledge.source_versions` | INSERT, SELECT |
+| `knowledge.sources` | INSERT, SELECT, UPDATE |
+| `matter_documents.document_versions` | INSERT, SELECT |
+| `matter_documents.documents` | INSERT, SELECT, UPDATE |
+| `policy.organization_jurisdictions` | SELECT |
+| `workspace.clients` | INSERT, SELECT, UPDATE |
+| `workspace.matters` | INSERT, SELECT, UPDATE |
 
 ### column
 

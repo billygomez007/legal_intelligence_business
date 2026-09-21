@@ -1,0 +1,26 @@
+{
+  "name": "@legalintel/matter-documents",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --project unit test"
+  },
+  "dependencies": {
+    "@legalintel/audit": "workspace:*",
+    "@legalintel/db": "workspace:*",
+    "@legalintel/iam": "workspace:*",
+    "@legalintel/kernel": "workspace:*",
+    "@legalintel/workspace": "workspace:*"
+  },
+  "devDependencies": {
+    "@legalintel/legal-corpus": "workspace:*",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

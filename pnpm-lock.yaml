@@ -107,15 +107,27 @@ importers:
       '@legalintel/db':
         specifier: workspace:*
         version: link:../../packages/platform/db
+      '@legalintel/entitlements':
+        specifier: workspace:*
+        version: link:../../packages/legal/entitlements
       '@legalintel/iam':
         specifier: workspace:*
         version: link:../../packages/platform/iam
+      '@legalintel/knowledge':
+        specifier: workspace:*
+        version: link:../../packages/product/knowledge
       '@legalintel/legal-corpus':
         specifier: workspace:*
         version: link:../../packages/legal/corpus
       '@legalintel/legal-ingestion':
         specifier: workspace:*
         version: link:../../packages/legal/ingestion
+      '@legalintel/matter-documents':
+        specifier: workspace:*
+        version: link:../../packages/product/matter-documents
+      '@legalintel/workspace':
+        specifier: workspace:*
+        version: link:../../packages/product/workspace
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -139,6 +151,28 @@ importers:
       '@legalintel/iam':
         specifier: workspace:*
         version: link:../../platform/iam
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.13.5
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+
+  packages/legal/entitlements:
+    dependencies:
+      '@legalintel/db':
+        specifier: workspace:*
+        version: link:../../platform/db
+      '@legalintel/iam':
+        specifier: workspace:*
+        version: link:../../platform/iam
+      '@legalintel/kernel':
+        specifier: workspace:*
+        version: link:../../platform/kernel
+      '@legalintel/legal-corpus':
+        specifier: workspace:*
+        version: link:../corpus
+    devDependencies:
       '@types/node':
         specifier: 'catalog:'
         version: 24.13.5
@@ -293,6 +327,90 @@ importers:
       '@opentelemetry/sdk-trace-base':
         specifier: 'catalog:'
         version: 2.11.0(@opentelemetry/api@1.9.1)
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.13.5
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+
+  packages/product/knowledge:
+    dependencies:
+      '@legalintel/audit':
+        specifier: workspace:*
+        version: link:../../platform/audit
+      '@legalintel/db':
+        specifier: workspace:*
+        version: link:../../platform/db
+      '@legalintel/iam':
+        specifier: workspace:*
+        version: link:../../platform/iam
+      '@legalintel/kernel':
+        specifier: workspace:*
+        version: link:../../platform/kernel
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.13.5
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@24.13.5)(vite@8.3.0(@types/node@24.13.5)(esbuild@0.28.2)(tsx@4.23.13))
+
+  packages/product/matter-documents:
+    dependencies:
+      '@legalintel/audit':
+        specifier: workspace:*
+        version: link:../../platform/audit
+      '@legalintel/db':
+        specifier: workspace:*
+        version: link:../../platform/db
+      '@legalintel/iam':
+        specifier: workspace:*
+        version: link:../../platform/iam
+      '@legalintel/kernel':
+        specifier: workspace:*
+        version: link:../../platform/kernel
+      '@legalintel/workspace':
+        specifier: workspace:*
+        version: link:../workspace
+    devDependencies:
+      '@legalintel/legal-corpus':
+        specifier: workspace:*
+        version: link:../../legal/corpus
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.13.5
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@24.13.5)(vite@8.3.0(@types/node@24.13.5)(esbuild@0.28.2)(tsx@4.23.13))
+
+  packages/product/workspace:
+    dependencies:
+      '@legalintel/audit':
+        specifier: workspace:*
+        version: link:../../platform/audit
+      '@legalintel/db':
+        specifier: workspace:*
+        version: link:../../platform/db
+      '@legalintel/entitlements':
+        specifier: workspace:*
+        version: link:../../legal/entitlements
+      '@legalintel/iam':
+        specifier: workspace:*
+        version: link:../../platform/iam
+      '@legalintel/kernel':
+        specifier: workspace:*
+        version: link:../../platform/kernel
+      '@legalintel/legal-corpus':
+        specifier: workspace:*
+        version: link:../../legal/corpus
+    devDependencies:
       '@types/node':
         specifier: 'catalog:'
         version: 24.13.5

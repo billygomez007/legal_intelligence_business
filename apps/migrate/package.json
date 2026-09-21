@@ -12,9 +12,13 @@
     "@legalintel/audit": "workspace:*",
     "@legalintel/config": "workspace:*",
     "@legalintel/db": "workspace:*",
+    "@legalintel/entitlements": "workspace:*",
     "@legalintel/iam": "workspace:*",
     "@legalintel/legal-corpus": "workspace:*",
-    "@legalintel/legal-ingestion": "workspace:*"
+    "@legalintel/workspace": "workspace:*",
+    "@legalintel/legal-ingestion": "workspace:*",
+    "@legalintel/knowledge": "workspace:*",
+    "@legalintel/matter-documents": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:",

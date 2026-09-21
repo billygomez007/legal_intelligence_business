@@ -3,6 +3,7 @@ packages:
   - packages/platform/*
   - packages/legal/*
 
+  - 'packages/product/*'
 # Dependency install scripts do not run unless explicitly allowed. esbuild's postinstall only
 # swaps a JS shim for the native binary (a startup optimisation); it works without it, so it is
 # denied on purpose rather than approved.

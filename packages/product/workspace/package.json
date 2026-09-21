@@ -1,0 +1,24 @@
+{
+  "name": "@legalintel/workspace",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@legalintel/audit": "workspace:*",
+    "@legalintel/db": "workspace:*",
+    "@legalintel/entitlements": "workspace:*",
+    "@legalintel/iam": "workspace:*",
+    "@legalintel/kernel": "workspace:*",
+    "@legalintel/legal-corpus": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  }
+}

@@ -25,10 +25,14 @@ const ACCEPTED: Readonly<Record<string, string>> = {
     'd4e02e96c9536e196434727847d5e458e5d28ed10469dd4c91f6705e771302a8',
 };
 
-const HARDENING = [
+const FORWARD_MIGRATIONS = [
   'iam/0002_role_hierarchy_integrity.sql',
   'corpus/0004_version_integrity_and_publication_provenance.sql',
+  'entitlements/0001_authorized_jurisdictions.sql',
+  'workspace/0001_clients_and_matters.sql',
   'ingestion/0002_review_integrity.sql',
+  'knowledge/0001_firm_knowledge.sql',
+  'matter_documents/0001_matter_documents.sql',
 ];
 
 async function everyMigration(): Promise<Map<string, MigrationFile>> {
@@ -44,18 +48,21 @@ describe('accepted migrations are never rewritten', () => {
     expect((await everyMigration()).get(key)?.checksum).toBe(checksum);
   });
 
-  it('leaves no file that is neither accepted nor one of the three hardening migrations', async () => {
+  it('leaves no file that is neither accepted nor one of the approved forward migrations', async () => {
     const keys = [...(await everyMigration()).keys()].sort();
-    expect(keys).toEqual([...Object.keys(ACCEPTED), ...HARDENING].sort());
+    expect(keys).toEqual([...Object.keys(ACCEPTED), ...FORWARD_MIGRATIONS].sort());
   });
 });
 
-describe('the hardening migrations are forward migrations', () => {
+describe('new migrations are forward migrations', () => {
   it('each follows the accepted versions of its own set, without a gap', async () => {
     const all = await everyMigration();
     const expectedVersions: Readonly<Record<string, number>> = {
       'iam/0002_role_hierarchy_integrity.sql': 2,
       'corpus/0004_version_integrity_and_publication_provenance.sql': 4,
+      'entitlements/0001_authorized_jurisdictions.sql': 1,
+      'workspace/0001_clients_and_matters.sql': 1,
+      'matter_documents/0001_matter_documents.sql': 1,
       'ingestion/0002_review_integrity.sql': 2,
     };
     for (const [key, expected] of Object.entries(expectedVersions)) {
@@ -69,7 +76,7 @@ describe('the hardening migrations are forward migrations', () => {
 
   it('are real: not empty and not a placeholder', async () => {
     const all = await everyMigration();
-    for (const key of HARDENING) {
+    for (const key of FORWARD_MIGRATIONS) {
       const sql = all.get(key)?.sql ?? '';
       expect(sql.length, key).toBeGreaterThan(2000);
       expect(sql, key).not.toMatch(/filled in by|todo|placeholder/i);
@@ -78,7 +85,7 @@ describe('the hardening migrations are forward migrations', () => {
 
   it('destroy nothing except the one constraint they replace', async () => {
     const all = await everyMigration();
-    const drops = HARDENING.flatMap((key) => {
+    const drops = FORWARD_MIGRATIONS.flatMap((key) => {
       const sql = (all.get(key)?.sql ?? '').replace(/--.*$/gm, '');
       return [
         ...sql.matchAll(

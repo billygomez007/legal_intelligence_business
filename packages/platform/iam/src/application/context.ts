@@ -21,7 +21,7 @@ export interface IamDeps {
 }
 
 /**
- * Resolves what a signed-in user may do in an organization. Built from the database, never
+ * Resolves what an active signed-in user may do in an organization. Built from the database, never
  * from anything the client claims. A user who is not an active member is told the
  * organization does not exist: "forbidden" would confirm it does.
  */
@@ -59,7 +59,7 @@ const invalidKey = () => unauthenticated('auth.invalid_api_key', 'Invalid API ke
 
 /**
  * Authenticates a presented API key. Every failure (malformed, unknown, wrong secret, revoked,
- * expired, issuer removed, organization inactive) returns the identical error, so a caller
+ * expired, issuer removed or account inactive, organization inactive) returns the identical error, so a caller
  * learns nothing about which keys exist or why one was refused.
  */
 export async function authenticateApiKey(deps: IamDeps, presented: string): Promise<AuthzContext> {

@@ -42,16 +42,27 @@ async function runInTransaction<T>(
   const client: PoolClient = await pool.connect();
   let active = true;
   let released = false;
+  let connectionError: Error | undefined;
+  // pg-pool removes its idle error listener while a client is checked out. A disconnect
+  // between queries must fail this transaction, not become an uncaught process error.
+  const onConnectionError = (error: Error) => {
+    connectionError ??= error;
+  };
+  client.on('error', onConnectionError);
+  const assertConnected = () => {
+    if (connectionError !== undefined) throw connectionError;
+  };
   const release = (error?: Error | boolean) => {
     if (released) return;
     released = true;
-    client.release(error);
+    client.release(connectionError ?? error);
   };
 
   const tx: Tx = {
     // async so that misuse surfaces as a rejected promise like every other query failure,
     // rather than a synchronous throw callers do not expect from a Promise-returning method.
     async query(text, values) {
+      assertConnected();
       if (!active) {
         throw internalError(
           'db.tx_closed',
@@ -79,20 +90,28 @@ async function runInTransaction<T>(
     }
 
     const result = await fn(tx);
+    assertConnected();
     await client.query('COMMIT');
+    assertConnected();
     return result;
   } catch (error) {
     try {
-      await client.query('ROLLBACK');
+      if (connectionError === undefined) await client.query('ROLLBACK');
     } catch (rollbackError) {
       // A connection that cannot roll back is in an unknown state. Destroy it rather than
       // returning it to the pool where the next request would inherit that state.
       release(rollbackError instanceof Error ? rollbackError : true);
     }
-    throw error;
+    throw connectionError ?? error;
   } finally {
     active = false;
-    release();
+    // Return/destroy first: pg-pool installs its idle listener synchronously on release.
+    // Only then remove our listener, so there is no unhandled-error window or listener leak.
+    try {
+      release();
+    } finally {
+      client.removeListener('error', onConnectionError);
+    }
   }
 }
 
