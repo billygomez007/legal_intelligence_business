@@ -98,6 +98,9 @@ importers:
 
   apps/migrate:
     dependencies:
+      '@legalintel/ai-tasks':
+        specifier: workspace:*
+        version: link:../../packages/product/ai-tasks
       '@legalintel/audit':
         specifier: workspace:*
         version: link:../../packages/platform/audit
@@ -333,6 +336,52 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 6.0.3
+
+  packages/product/ai-tasks:
+    dependencies:
+      '@legalintel/audit':
+        specifier: workspace:*
+        version: link:../../platform/audit
+      '@legalintel/db':
+        specifier: workspace:*
+        version: link:../../platform/db
+      '@legalintel/entitlements':
+        specifier: workspace:*
+        version: link:../../legal/entitlements
+      '@legalintel/iam':
+        specifier: workspace:*
+        version: link:../../platform/iam
+      '@legalintel/kernel':
+        specifier: workspace:*
+        version: link:../../platform/kernel
+      '@legalintel/workspace':
+        specifier: workspace:*
+        version: link:../workspace
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.5
+    devDependencies:
+      '@legalintel/knowledge':
+        specifier: workspace:*
+        version: link:../knowledge
+      '@legalintel/legal-corpus':
+        specifier: workspace:*
+        version: link:../../legal/corpus
+      '@legalintel/legal-ingestion':
+        specifier: workspace:*
+        version: link:../../legal/ingestion
+      '@legalintel/matter-documents':
+        specifier: workspace:*
+        version: link:../matter-documents
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.13.5
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@24.13.5)(vite@8.3.0(@types/node@24.13.5)(esbuild@0.28.2)(tsx@4.23.13))
 
   packages/product/knowledge:
     dependencies:

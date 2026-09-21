@@ -9,16 +9,17 @@
     "start": "tsx src/main.ts"
   },
   "dependencies": {
+    "@legalintel/ai-tasks": "workspace:*",
     "@legalintel/audit": "workspace:*",
     "@legalintel/config": "workspace:*",
     "@legalintel/db": "workspace:*",
     "@legalintel/entitlements": "workspace:*",
     "@legalintel/iam": "workspace:*",
-    "@legalintel/legal-corpus": "workspace:*",
-    "@legalintel/workspace": "workspace:*",
-    "@legalintel/legal-ingestion": "workspace:*",
     "@legalintel/knowledge": "workspace:*",
-    "@legalintel/matter-documents": "workspace:*"
+    "@legalintel/legal-corpus": "workspace:*",
+    "@legalintel/legal-ingestion": "workspace:*",
+    "@legalintel/matter-documents": "workspace:*",
+    "@legalintel/workspace": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:",

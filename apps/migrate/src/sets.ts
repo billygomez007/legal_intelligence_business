@@ -7,6 +7,7 @@ import { entitlementMigrations } from '@legalintel/entitlements';
 import { workspaceMigrations } from '@legalintel/workspace';
 import { knowledgeMigrations } from '@legalintel/knowledge';
 import { matterDocumentMigrations } from '@legalintel/matter-documents';
+import { aiTaskMigrations } from '@legalintel/ai-tasks';
 
 /**
  * Every migration set in the repository, dependencies first. A set may reference objects
@@ -22,5 +23,6 @@ export const allMigrationSets: readonly MigrationSet[] = [
   workspaceMigrations,
   knowledgeMigrations,
   matterDocumentMigrations,
+  aiTaskMigrations,
   ingestionMigrations,
 ];

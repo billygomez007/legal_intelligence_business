@@ -12,6 +12,7 @@ Reviewing a migration? A change to this file is a change to what a role can do.
 
 | Object | Privileges |
 | --- | --- |
+| `ai_tasks` | USAGE |
 | `app` | USAGE |
 | `audit` | USAGE |
 | `corpus` | USAGE |
@@ -26,6 +27,8 @@ Reviewing a migration? A change to this file is a change to what a role can do.
 
 | Object | Privileges |
 | --- | --- |
+| `ai_tasks.task_scope_revisions` | INSERT, SELECT |
+| `ai_tasks.tasks` | INSERT, SELECT, UPDATE |
 | `audit.events` | INSERT, SELECT |
 | `corpus.case_details` | SELECT |
 | `corpus.court_lineage` | SELECT |

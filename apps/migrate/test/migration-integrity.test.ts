@@ -33,6 +33,7 @@ const FORWARD_MIGRATIONS = [
   'ingestion/0002_review_integrity.sql',
   'knowledge/0001_firm_knowledge.sql',
   'matter_documents/0001_matter_documents.sql',
+  'ai_tasks/0001_ai_tasks.sql',
 ];
 
 async function everyMigration(): Promise<Map<string, MigrationFile>> {
@@ -63,6 +64,7 @@ describe('new migrations are forward migrations', () => {
       'entitlements/0001_authorized_jurisdictions.sql': 1,
       'workspace/0001_clients_and_matters.sql': 1,
       'matter_documents/0001_matter_documents.sql': 1,
+      'ai_tasks/0001_ai_tasks.sql': 1,
       'ingestion/0002_review_integrity.sql': 2,
     };
     for (const [key, expected] of Object.entries(expectedVersions)) {
