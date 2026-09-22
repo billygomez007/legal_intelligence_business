@@ -9,6 +9,15 @@ import type { AuthzContext, IamDeps } from '@legalintel/iam';
 import type { UserId } from '@legalintel/kernel';
 
 import {
+  MatterDocumentId,
+  archiveMatterDocument,
+  createMatterDocument,
+  listMatterDocumentVersions,
+  PgMatterDocumentStore,
+  updateMatterDocument,
+} from '@legalintel/matter-documents';
+
+import {
   ClientId,
   createClient,
   createMatter,
@@ -23,6 +32,8 @@ import type { HumanSessionIdentityResolver } from '../auth/iam-request-auth.js';
 import type { RequestAuthResolver } from '../auth/request-auth.js';
 
 import { sendJson } from './http-utils.js';
+
+const matterDocumentStore = new PgMatterDocumentStore();
 
 const MAX_BODY_BYTES = 64 * 1024;
 
@@ -692,6 +703,10 @@ interface DocumentRow {
   readonly createdAt: Date;
 
   readonly updatedAt: Date;
+
+  readonly versionCount: number;
+
+  readonly latestVersionNumber: number | null;
 }
 
 async function documents(
@@ -701,16 +716,6 @@ async function documents(
 
   response: ServerResponse,
 ): Promise<void> {
-  if (request.method !== 'GET') {
-    sendJson(response, 405, {
-      error: {
-        code: 'method_not_allowed',
-      },
-    });
-
-    return;
-  }
-
   const context = await tenantContext(dependencies, request);
 
   if (context === null) {
@@ -723,43 +728,294 @@ async function documents(
     return;
   }
 
-  if (!context.permissions.has('matter-document:read')) {
-    deny(response);
+  const url = new URL(request.url ?? '/v1/workspace/documents', 'http://127.0.0.1');
+
+  if (request.method === 'GET') {
+    const documentId = url.searchParams.get('documentId');
+
+    if (documentId !== null) {
+      let parsedDocumentId: ReturnType<typeof MatterDocumentId.parse>;
+
+      try {
+        parsedDocumentId = MatterDocumentId.parse(documentId);
+      } catch {
+        sendJson(response, 400, {
+          error: {
+            code: 'request_invalid',
+          },
+        });
+
+        return;
+      }
+
+      const versions = await withContextTransaction(
+        dependencies,
+        context,
+
+        (tx) => listMatterDocumentVersions(matterDocumentStore, tx, context, parsedDocumentId),
+
+        true,
+      );
+
+      sendJson(response, 200, {
+        data: versions,
+      });
+
+      return;
+    }
+
+    if (!context.permissions.has('matter-document:read')) {
+      deny(response);
+
+      return;
+    }
+
+    const data = await withContextTransaction(
+      dependencies,
+      context,
+
+      async (tx) => {
+        const [documentsResult, matterList] = await Promise.all([
+          tx.query<DocumentRow>(
+            `
+                  SELECT
+                    d.id::text
+                      AS "id",
+                    d.matter_id::text
+                      AS "matterId",
+                    d.name
+                      AS "name",
+                    d.description
+                      AS "description",
+                    d.status
+                      AS "status",
+                    d.created_at
+                      AS "createdAt",
+                    d.updated_at
+                      AS "updatedAt",
+                    COUNT(v.id)::int
+                      AS "versionCount",
+                    MAX(v.version_number)::int
+                      AS "latestVersionNumber"
+                  FROM matter_documents.documents d
+                  LEFT JOIN matter_documents.document_versions v
+                    ON v.organization_id =
+                       d.organization_id
+                   AND v.document_id =
+                       d.id
+                  GROUP BY
+                    d.id,
+                    d.matter_id,
+                    d.name,
+                    d.description,
+                    d.status,
+                    d.created_at,
+                    d.updated_at
+                  ORDER BY
+                    d.updated_at DESC,
+                    d.id DESC
+                  LIMIT 250
+                `,
+          ),
+
+          listMatters(
+            {
+              workspaceStore: pgWorkspaceStore,
+            },
+
+            tx,
+            context,
+          ),
+        ]);
+
+        return {
+          documents: documentsResult.rows,
+
+          matters: matterList,
+        };
+      },
+
+      true,
+    );
+
+    sendJson(response, 200, {
+      data,
+    });
 
     return;
   }
 
-  const values = await withContextTransaction(
-    dependencies,
-    context,
+  if (request.method === 'POST') {
+    const body = await readJson(request);
 
-    async (tx) => {
-      const result = await tx.query<DocumentRow>(
-        `
-              SELECT
-                d.id::text AS "id",
-                d.matter_id::text AS "matterId",
-                d.name AS "name",
-                d.description AS "description",
-                d.status AS "status",
-                d.created_at AS "createdAt",
-                d.updated_at AS "updatedAt"
-              FROM matter_documents.documents d
-              ORDER BY
-                d.updated_at DESC,
-                d.id DESC
-              LIMIT 250
-            `,
+    if (body === null) {
+      sendJson(response, 400, {
+        error: {
+          code: 'request_invalid',
+        },
+      });
+
+      return;
+    }
+
+    const matterId = typeof body['matterId'] === 'string' ? body['matterId'].trim() : '';
+
+    const name = typeof body['name'] === 'string' ? body['name'].trim() : '';
+
+    const description = typeof body['description'] === 'string' ? body['description'].trim() : null;
+
+    if (matterId.length === 0 || name.length < 2 || name.length > 240) {
+      sendJson(response, 400, {
+        error: {
+          code: 'request_invalid',
+        },
+      });
+
+      return;
+    }
+
+    const created = await withContextTransaction(
+      dependencies,
+      context,
+
+      (tx) =>
+        createMatterDocument(
+          matterDocumentStore,
+          tx,
+          context,
+
+          {
+            matterId,
+            name,
+
+            ...(description === null || description.length === 0
+              ? {}
+              : {
+                  description,
+                }),
+          },
+        ),
+    );
+
+    sendJson(response, 201, {
+      data: created,
+    });
+
+    return;
+  }
+
+  if (request.method === 'PATCH') {
+    const body = await readJson(request);
+
+    if (body === null) {
+      sendJson(response, 400, {
+        error: {
+          code: 'request_invalid',
+        },
+      });
+
+      return;
+    }
+
+    const rawId = body['documentId'];
+
+    if (typeof rawId !== 'string') {
+      sendJson(response, 400, {
+        error: {
+          code: 'request_invalid',
+        },
+      });
+
+      return;
+    }
+
+    let documentId: ReturnType<typeof MatterDocumentId.parse>;
+
+    try {
+      documentId = MatterDocumentId.parse(rawId);
+    } catch {
+      sendJson(response, 400, {
+        error: {
+          code: 'request_invalid',
+        },
+      });
+
+      return;
+    }
+
+    const action = body['action'];
+
+    if (action === 'archive') {
+      const archived = await withContextTransaction(
+        dependencies,
+        context,
+
+        (tx) => archiveMatterDocument(matterDocumentStore, tx, context, documentId),
       );
 
-      return result.rows;
+      sendJson(response, 200, {
+        data: archived,
+      });
+
+      return;
+    }
+
+    const name = typeof body['name'] === 'string' ? body['name'].trim() : '';
+
+    const rawDescription = body['description'];
+
+    const description =
+      rawDescription === null
+        ? null
+        : typeof rawDescription === 'string'
+          ? rawDescription.trim()
+          : undefined;
+
+    if (name.length < 2 || name.length > 240) {
+      sendJson(response, 400, {
+        error: {
+          code: 'request_invalid',
+        },
+      });
+
+      return;
+    }
+
+    const updated = await withContextTransaction(
+      dependencies,
+      context,
+
+      (tx) =>
+        updateMatterDocument(
+          matterDocumentStore,
+          tx,
+          context,
+
+          {
+            id: documentId,
+
+            name,
+
+            ...(description === undefined
+              ? {}
+              : {
+                  description: description === '' ? null : description,
+                }),
+          },
+        ),
+    );
+
+    sendJson(response, 200, {
+      data: updated,
+    });
+
+    return;
+  }
+
+  sendJson(response, 405, {
+    error: {
+      code: 'method_not_allowed',
     },
-
-    true,
-  );
-
-  sendJson(response, 200, {
-    data: values,
   });
 }
 

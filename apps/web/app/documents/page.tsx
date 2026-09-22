@@ -1,8 +1,16 @@
+import { DocumentManager } from '../../components/document-manager';
+
 import { WorkspaceShell } from '../../components/workspace-shell';
 
-import { WorkspaceCard } from '../../components/workspace-ui';
-
 import { workspaceGet } from '../../lib/workspace-api';
+
+interface Matter {
+  readonly id: string;
+
+  readonly name: string;
+
+  readonly reference?: string | null;
+}
 
 interface MatterDocument {
   readonly id: string;
@@ -14,56 +22,28 @@ interface MatterDocument {
   readonly description: string | null;
 
   readonly status: string;
+
+  readonly versionCount: number;
+
+  readonly latestVersionNumber: number | null;
+}
+
+interface DocumentWorkspace {
+  readonly documents: readonly MatterDocument[];
+
+  readonly matters: readonly Matter[];
 }
 
 export default async function DocumentsPage() {
-  const documents =
-    (await workspaceGet<readonly MatterDocument[]>('/v1/workspace/documents')) ?? [];
+  const data = await workspaceGet<DocumentWorkspace>('/v1/workspace/documents');
 
   return (
     <WorkspaceShell
       eyebrow="Private knowledge"
       title="Documents"
-      description="Real tenant-isolated matter document records from the Law Afrique database."
+      description="Secure tenant-isolated document records attached to your legal matters."
     >
-      <WorkspaceCard
-        title="Document library"
-        description={`${documents.length} document${documents.length === 1 ? '' : 's'} available.`}
-      >
-        {documents.length === 0 ? (
-          <div className="workspace-table-empty">
-            <p>No documents yet.</p>
-
-            <span>
-              Matter documents created through the secure document domain will appear here.
-            </span>
-          </div>
-        ) : (
-          <div className="data-table">
-            <div className="data-table-row data-table-head">
-              <span>Document</span>
-
-              <span>Matter</span>
-
-              <span>Description</span>
-
-              <span>Status</span>
-            </div>
-
-            {documents.map((document) => (
-              <div key={document.id} className="data-table-row">
-                <strong>{document.name}</strong>
-
-                <span>{document.matterId}</span>
-
-                <span>{document.description ?? '—'}</span>
-
-                <span className="status-badge">{document.status}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </WorkspaceCard>
+      <DocumentManager documents={data?.documents ?? []} matters={data?.matters ?? []} />
     </WorkspaceShell>
   );
 }

@@ -1337,3 +1337,66 @@ button {
     grid-template-columns: 1fr;
   }
 }
+
+.document-management-layout {
+  display: grid;
+  grid-template-columns:
+    minmax(280px, 0.72fr)
+    minmax(0, 1.55fr);
+  gap: 18px;
+}
+
+.workspace-form textarea {
+  min-height: 96px;
+  padding-top: 12px;
+  padding-bottom: 12px;
+  resize: vertical;
+}
+
+.storage-boundary-note {
+  display: grid;
+  gap: 6px;
+  margin-top: 20px;
+  padding: 14px;
+  border: 1px solid rgba(210, 174, 95, 0.13);
+  border-radius: 10px;
+  background: rgba(210, 174, 95, 0.035);
+}
+
+.storage-boundary-note strong {
+  color: #d7b66a;
+  font-size: 10px;
+}
+
+.storage-boundary-note p {
+  margin: 0;
+  color: #748191;
+  font-size: 10px;
+  line-height: 1.65;
+}
+
+.document-table-title {
+  display: grid;
+  gap: 4px;
+}
+
+.document-table-title small {
+  overflow: hidden;
+  max-width: 280px;
+  color: #697686;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-table-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (max-width: 900px) {
+  .document-management-layout {
+    grid-template-columns: 1fr;
+  }
+}
