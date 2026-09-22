@@ -46,6 +46,8 @@ export const apiRuntimeEnvSchema = deployEnvSchema
     API_HOST: host,
 
     API_PORT: port,
+
+    PRIVATE_STORAGE_DIR: z.string().min(1).max(2048).default('.law-afrique-private-storage'),
   });
 
 export interface LawAfriqueApiRuntimeConfig {
@@ -70,6 +72,8 @@ export interface LawAfriqueApiRuntimeConfig {
   readonly openAiTimeoutMs: number;
 
   readonly googleOidcClientId: string;
+
+  readonly privateStorageDir: string;
 }
 
 export function loadLawAfriqueApiRuntimeConfig(): LawAfriqueApiRuntimeConfig {
@@ -97,5 +101,7 @@ export function loadLawAfriqueApiRuntimeConfig(): LawAfriqueApiRuntimeConfig {
     openAiTimeoutMs: config.OPENAI_LEGAL_SYNTHESIS_TIMEOUT_MS,
 
     googleOidcClientId: config.GOOGLE_OIDC_CLIENT_ID,
+
+    privateStorageDir: config.PRIVATE_STORAGE_DIR,
   });
 }

@@ -48,6 +48,8 @@ export function DocumentManager({
 
   const [error, setError] = useState<string | null>(null);
 
+  const [uploadingDocumentId, setUploadingDocumentId] = useState<string | null>(null);
+
   async function createDocument() {
     setWorking(true);
 
@@ -89,6 +91,48 @@ export function DocumentManager({
     setWorking(false);
 
     router.refresh();
+  }
+
+  async function uploadFile(documentId: string, file: File) {
+    if (file.size === 0 || file.size > 20 * 1024 * 1024) {
+      setError('File must be between 1 byte and 20 MB.');
+
+      return;
+    }
+
+    setError(null);
+
+    setUploadingDocumentId(documentId);
+
+    const form = new FormData();
+
+    form.set('documentId', documentId);
+
+    form.set('file', file);
+
+    try {
+      const response = await fetch(
+        '/api/document-upload',
+
+        {
+          method: 'POST',
+
+          body: form,
+        },
+      );
+
+      const body = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        setError(body?.error?.code ?? 'Unable to upload file.');
+
+        return;
+      }
+
+      router.refresh();
+    } finally {
+      setUploadingDocumentId(null);
+    }
   }
 
   async function archiveDocument(documentId: string) {
@@ -202,8 +246,9 @@ export function DocumentManager({
           <strong>File storage</strong>
 
           <p>
-            Document metadata is live. Physical file upload is not enabled until the private storage
-            provider is connected, so Law Afrique will not fabricate storage keys or file hashes.
+            Private file upload is enabled for local development. Uploaded files are stored outside
+            the public web directory and recorded as immutable document versions with a real SHA-256
+            digest, MIME type, byte size, and private storage key.
           </p>
         </div>
       </section>
@@ -262,13 +307,35 @@ export function DocumentManager({
                     <span className="status-badge">{document.status}</span>
 
                     {document.status !== 'archived' && (
-                      <button
-                        type="button"
-                        className="button-secondary compact-button"
-                        onClick={() => void archiveDocument(document.id)}
-                      >
-                        Archive
-                      </button>
+                      <>
+                        <label className="file-upload-button">
+                          {uploadingDocumentId === document.id ? 'Uploading…' : 'Upload file'}
+
+                          <input
+                            type="file"
+                            className="file-upload-input"
+                            disabled={uploadingDocumentId !== null}
+                            onChange={(event) => {
+                              const file = event.target.files?.[0];
+
+                              if (file !== undefined) {
+                                void uploadFile(document.id, file);
+                              }
+
+                              event.target.value = '';
+                            }}
+                          />
+                        </label>
+
+                        <button
+                          type="button"
+                          className="button-secondary compact-button"
+                          disabled={uploadingDocumentId !== null}
+                          onClick={() => void archiveDocument(document.id)}
+                        >
+                          Archive
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>

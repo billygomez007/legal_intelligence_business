@@ -359,3 +359,79 @@ export async function createOrganization(input: CreateOrganizationInput): Promis
         }),
   };
 }
+
+export async function workspaceUpload<T>(
+  path: string,
+
+  documentId: string,
+
+  file: File,
+): Promise<{
+  readonly ok: boolean;
+
+  readonly status: number;
+
+  readonly data?: T;
+
+  readonly errorCode?: string;
+}> {
+  const organization = await activeOrganization();
+
+  if (organization === null) {
+    return {
+      ok: false,
+
+      status: 409,
+
+      errorCode: 'organization_required',
+    };
+  }
+
+  const bytes = new Uint8Array(await file.arrayBuffer());
+
+  const response = await requestApi(
+    path,
+
+    {
+      method: 'POST',
+
+      headers: {
+        'content-type': file.type || 'application/octet-stream',
+
+        'x-document-id': documentId,
+
+        'x-original-filename': encodeURIComponent(file.name),
+      },
+
+      body: bytes,
+    },
+
+    organization.id,
+  );
+
+  const payload = (await response.json().catch(() => ({}))) as {
+    readonly data?: T;
+
+    readonly error?: {
+      readonly code?: string;
+    };
+  };
+
+  return {
+    ok: response.ok,
+
+    status: response.status,
+
+    ...(payload.data === undefined
+      ? {}
+      : {
+          data: payload.data,
+        }),
+
+    ...(payload.error?.code === undefined
+      ? {}
+      : {
+          errorCode: payload.error.code,
+        }),
+  };
+}

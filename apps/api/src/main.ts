@@ -13,6 +13,8 @@ import { createLawAfriqueApiApplication } from './runtime/composition-root.js';
 
 import { loadLawAfriqueApiRuntimeConfig } from './runtime/api-config.js';
 
+import { createLocalPrivateFileStore } from './storage/local-private-file-store.js';
+
 async function main(): Promise<void> {
   const config = loadLawAfriqueApiRuntimeConfig();
 
@@ -68,8 +70,12 @@ async function main(): Promise<void> {
       clientId: config.googleOidcClientId,
     });
 
+    const privateFiles = createLocalPrivateFileStore(config.privateStorageDir);
+
     application = createLawAfriqueApiApplication({
       pool,
+
+      privateFiles,
 
       humanSessions,
 

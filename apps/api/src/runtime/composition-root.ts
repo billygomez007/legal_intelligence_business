@@ -21,6 +21,8 @@ import { createHumanSignInService } from '../auth/sign-in-service.js';
 
 import { createLawAfriqueApiServer } from '../server.js';
 
+import type { PrivateFileStore } from '../storage/private-file-store.js';
+
 import { createLawAfriqueIamRuntime } from './iam-runtime.js';
 
 export interface CreateLawAfriqueApiApplicationDependencies {
@@ -31,6 +33,8 @@ export interface CreateLawAfriqueApiApplicationDependencies {
   readonly externalIdentityVerifier?: ExternalIdentityVerifier;
 
   readonly authSecret?: string;
+
+  readonly privateFiles?: PrivateFileStore;
 
   /**
    * Production may create this from the OpenAI runtime configuration.
@@ -112,6 +116,12 @@ export function createLawAfriqueApiApplication(
       iam,
       auth,
       humanSessions: dependencies.humanSessions,
+
+      ...(dependencies.privateFiles === undefined
+        ? {}
+        : {
+            privateFiles: dependencies.privateFiles,
+          }),
     },
 
     ...(signIn !== undefined

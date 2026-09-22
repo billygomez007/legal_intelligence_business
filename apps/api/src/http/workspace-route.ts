@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
@@ -12,6 +12,7 @@ import {
   MatterDocumentId,
   archiveMatterDocument,
   createMatterDocument,
+  createMatterDocumentVersion,
   listMatterDocumentVersions,
   PgMatterDocumentStore,
   updateMatterDocument,
@@ -31,11 +32,15 @@ import type { HumanSessionIdentityResolver } from '../auth/iam-request-auth.js';
 
 import type { RequestAuthResolver } from '../auth/request-auth.js';
 
+import type { PrivateFileStore } from '../storage/private-file-store.js';
+
 import { sendJson } from './http-utils.js';
 
 const matterDocumentStore = new PgMatterDocumentStore();
 
 const MAX_BODY_BYTES = 64 * 1024;
+
+const MAX_FILE_BYTES = 20 * 1024 * 1024;
 
 export interface WorkspaceRouteDependencies {
   readonly pool: DbPool;
@@ -45,6 +50,8 @@ export interface WorkspaceRouteDependencies {
   readonly auth: RequestAuthResolver;
 
   readonly humanSessions: HumanSessionIdentityResolver;
+
+  readonly privateFiles?: PrivateFileStore;
 }
 
 function bearerToken(authorization: string | undefined): string | null {
@@ -111,6 +118,54 @@ async function readJson(request: IncomingMessage): Promise<Record<string, unknow
     }
 
     return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+async function readBinary(request: IncomingMessage): Promise<Buffer | null> {
+  const declaredLength = Number(request.headers['content-length'] ?? 0);
+
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_FILE_BYTES) {
+    return null;
+  }
+
+  const chunks: Buffer[] = [];
+
+  let size = 0;
+
+  for await (const chunk of request) {
+    const value = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+
+    size += value.length;
+
+    if (size > MAX_FILE_BYTES) {
+      return null;
+    }
+
+    chunks.push(value);
+  }
+
+  if (size === 0) {
+    return null;
+  }
+
+  return Buffer.concat(chunks);
+}
+
+function decodedFilename(value: string | undefined): string | null {
+  if (value === undefined || value.length === 0) {
+    return null;
+  }
+
+  try {
+    const decoded = decodeURIComponent(value);
+
+    if (decoded.length < 1 || decoded.length > 255) {
+      return null;
+    }
+
+    return decoded;
   } catch {
     return null;
   }
@@ -1019,6 +1074,171 @@ async function documents(
   });
 }
 
+async function uploadDocumentVersion(
+  dependencies: WorkspaceRouteDependencies,
+
+  request: IncomingMessage,
+
+  response: ServerResponse,
+): Promise<void> {
+  if (request.method !== 'POST') {
+    sendJson(response, 405, {
+      error: {
+        code: 'method_not_allowed',
+      },
+    });
+
+    return;
+  }
+
+  const context = await tenantContext(dependencies, request);
+
+  if (context === null) {
+    sendJson(response, 401, {
+      error: {
+        code: 'authentication_required',
+      },
+    });
+
+    return;
+  }
+
+  if (dependencies.privateFiles === undefined) {
+    sendJson(response, 503, {
+      error: {
+        code: 'private_storage_unavailable',
+      },
+    });
+
+    return;
+  }
+
+  const rawDocumentId = request.headers['x-document-id'];
+
+  const rawFilename = request.headers['x-original-filename'];
+
+  if (typeof rawDocumentId !== 'string' || typeof rawFilename !== 'string') {
+    sendJson(response, 400, {
+      error: {
+        code: 'request_invalid',
+      },
+    });
+
+    return;
+  }
+
+  let documentId: ReturnType<typeof MatterDocumentId.parse>;
+
+  try {
+    documentId = MatterDocumentId.parse(rawDocumentId);
+  } catch {
+    sendJson(response, 400, {
+      error: {
+        code: 'request_invalid',
+      },
+    });
+
+    return;
+  }
+
+  const filename = decodedFilename(rawFilename);
+
+  if (filename === null) {
+    sendJson(response, 400, {
+      error: {
+        code: 'request_invalid',
+      },
+    });
+
+    return;
+  }
+
+  const mimeType =
+    typeof request.headers['content-type'] === 'string'
+      ? request.headers['content-type']
+      : 'application/octet-stream';
+
+  if (mimeType.length > 255) {
+    sendJson(response, 400, {
+      error: {
+        code: 'request_invalid',
+      },
+    });
+
+    return;
+  }
+
+  const bytes = await readBinary(request);
+
+  if (bytes === null) {
+    sendJson(response, 413, {
+      error: {
+        code: 'file_invalid_or_too_large',
+      },
+    });
+
+    return;
+  }
+
+  const organizationId = context.organizationId;
+
+  if (organizationId === null || organizationId === undefined) {
+    sendJson(response, 409, {
+      error: {
+        code: 'organization_required',
+      },
+    });
+
+    return;
+  }
+
+  const stored = await dependencies.privateFiles.put({
+    organizationId: String(organizationId),
+
+    documentId: String(documentId),
+
+    bytes,
+  });
+
+  const contentSha256 = createHash('sha256').update(bytes).digest('hex');
+
+  try {
+    const version = await withContextTransaction(
+      dependencies,
+      context,
+
+      (tx) =>
+        createMatterDocumentVersion(
+          matterDocumentStore,
+          tx,
+          context,
+
+          {
+            documentId,
+
+            originalFilename: filename,
+
+            mimeType,
+
+            storageKey: stored.storageKey,
+
+            contentSha256,
+
+            sizeBytes: bytes.length,
+          },
+        ),
+    );
+
+    sendJson(response, 201, {
+      data: version,
+    });
+  } catch (error: unknown) {
+    await dependencies.privateFiles.delete(stored.storageKey).catch(() => undefined);
+
+    throw error;
+  }
+}
+
 interface WorkProductRow {
   readonly id: string;
 
@@ -1230,6 +1450,12 @@ export async function handleWorkspaceRoute(
 
   if (pathname === '/v1/workspace/matters') {
     await matters(dependencies, request, response);
+
+    return true;
+  }
+
+  if (pathname === '/v1/workspace/documents/upload') {
+    await uploadDocumentVersion(dependencies, request, response);
 
     return true;
   }

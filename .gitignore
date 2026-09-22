@@ -20,3 +20,5 @@ customer-documents/
 
 # Local infrastructure state
 infra/**/data/
+
+.law-afrique-private-storage/

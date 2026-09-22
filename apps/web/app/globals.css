@@ -1400,3 +1400,32 @@ button {
     grid-template-columns: 1fr;
   }
 }
+
+.file-upload-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 11px;
+  overflow: hidden;
+  border: 1px solid rgba(210, 174, 95, 0.24);
+  border-radius: 8px;
+  background: rgba(210, 174, 95, 0.06);
+  color: #d7b66a;
+  font-size: 9px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.file-upload-button:hover {
+  border-color: rgba(210, 174, 95, 0.42);
+}
+
+.file-upload-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
