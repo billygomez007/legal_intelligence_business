@@ -1,5 +1,9 @@
 import { once } from 'node:events';
 
+import { isAbsolute, resolve } from 'node:path';
+
+import { fileURLToPath } from 'node:url';
+
 import { createGoogleExternalIdentityVerifier } from './auth/providers/google-identity.js';
 
 import { createSignedHumanSessionIdentityResolver } from './auth/human-session-token.js';
@@ -70,7 +74,13 @@ async function main(): Promise<void> {
       clientId: config.googleOidcClientId,
     });
 
-    const privateFiles = createLocalPrivateFileStore(config.privateStorageDir);
+    const repositoryRoot = fileURLToPath(new URL('../../../', import.meta.url));
+
+    const privateStorageDirectory = isAbsolute(config.privateStorageDir)
+      ? config.privateStorageDir
+      : resolve(repositoryRoot, config.privateStorageDir);
+
+    const privateFiles = createLocalPrivateFileStore(privateStorageDirectory);
 
     application = createLawAfriqueApiApplication({
       pool,

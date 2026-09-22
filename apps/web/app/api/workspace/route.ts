@@ -100,7 +100,7 @@ export async function POST(request: Request) {
 
   const resource = url.searchParams.get('resource');
 
-  if (resource !== 'clients' && resource !== 'matters') {
+  if (resource !== 'clients' && resource !== 'matters' && resource !== 'documents') {
     return NextResponse.json(
       {
         error: {
@@ -130,7 +130,12 @@ export async function POST(request: Request) {
     );
   }
 
-  const path = resource === 'clients' ? '/v1/workspace/clients' : '/v1/workspace/matters';
+  const path =
+    resource === 'clients'
+      ? '/v1/workspace/clients'
+      : resource === 'documents'
+        ? '/v1/workspace/documents'
+        : '/v1/workspace/matters';
 
   const result = await workspacePost(
     path,
@@ -174,7 +179,7 @@ export async function PATCH(request: Request) {
 
   const resource = url.searchParams.get('resource');
 
-  if (resource !== 'clients') {
+  if (resource !== 'clients' && resource !== 'documents') {
     return NextResponse.json(
       {
         error: {
@@ -205,7 +210,7 @@ export async function PATCH(request: Request) {
   }
 
   const result = await workspacePatch(
-    '/v1/workspace/clients',
+    resource === 'documents' ? '/v1/workspace/documents' : '/v1/workspace/clients',
 
     body as Record<string, unknown>,
   );
