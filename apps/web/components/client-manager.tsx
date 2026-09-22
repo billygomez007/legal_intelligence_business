@@ -68,7 +68,7 @@ export function ClientManager({ clients }: { readonly clients: readonly Client[]
   }
 
   async function toggleStatus(client: Client) {
-    const nextStatus = client.status === 'archived' ? 'active' : 'inactive';
+    const nextStatus = client.status === 'archived' ? 'active' : 'archived';
 
     const response = await fetch(
       '/api/workspace?resource=clients',
@@ -188,7 +188,7 @@ export function ClientManager({ clients }: { readonly clients: readonly Client[]
                   className="button-secondary compact-button"
                   onClick={() => void toggleStatus(client)}
                 >
-                  {client.status === 'archived' ? 'Activate' : 'Deactivate'}
+                  {client.status === 'archived' ? 'Reactivate' : 'Archive'}
                 </button>
               </div>
             ))}
