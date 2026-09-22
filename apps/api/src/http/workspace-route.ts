@@ -9,11 +9,13 @@ import type { AuthzContext, IamDeps } from '@legalintel/iam';
 import type { UserId } from '@legalintel/kernel';
 
 import {
+  ClientId,
   createClient,
   createMatter,
   listClients,
   listMatters,
   pgWorkspaceStore,
+  updateClient,
 } from '@legalintel/workspace';
 
 import type { HumanSessionIdentityResolver } from '../auth/iam-request-auth.js';
@@ -281,6 +283,243 @@ async function organizations(
 
         role: 'owner',
       },
+    });
+
+    return;
+  }
+
+  sendJson(response, 405, {
+    error: {
+      code: 'method_not_allowed',
+    },
+  });
+}
+
+async function clients(
+  dependencies: WorkspaceRouteDependencies,
+
+  request: IncomingMessage,
+
+  response: ServerResponse,
+): Promise<void> {
+  const context = await tenantContext(dependencies, request);
+
+  if (context === null) {
+    sendJson(response, 401, {
+      error: {
+        code: 'authentication_required',
+      },
+    });
+
+    return;
+  }
+
+  if (request.method === 'GET') {
+    const values = await withContextTransaction(
+      dependencies,
+      context,
+
+      (tx) =>
+        listClients(
+          {
+            workspaceStore: pgWorkspaceStore,
+          },
+
+          tx,
+          context,
+        ),
+
+      true,
+    );
+
+    sendJson(response, 200, {
+      data: values,
+    });
+
+    return;
+  }
+
+  if (request.method === 'POST') {
+    const body = await readJson(request);
+
+    if (body === null) {
+      sendJson(response, 400, {
+        error: {
+          code: 'request_invalid',
+        },
+      });
+
+      return;
+    }
+
+    const rawName = body['name'];
+
+    const rawReference = body['reference'];
+
+    const name = typeof rawName === 'string' ? rawName.trim() : '';
+
+    const reference = typeof rawReference === 'string' ? rawReference.trim() : null;
+
+    if (name.length < 2 || name.length > 200) {
+      sendJson(response, 400, {
+        error: {
+          code: 'request_invalid',
+        },
+      });
+
+      return;
+    }
+
+    const created = await withContextTransaction(
+      dependencies,
+      context,
+
+      (tx) =>
+        createClient(
+          {
+            workspaceStore: pgWorkspaceStore,
+          },
+
+          tx,
+          context,
+
+          {
+            name,
+
+            ...(reference === null || reference.length === 0
+              ? {}
+              : {
+                  reference,
+                }),
+          },
+        ),
+    );
+
+    sendJson(response, 201, {
+      data: created,
+    });
+
+    return;
+  }
+
+  if (request.method === 'PATCH') {
+    const body = await readJson(request);
+
+    if (body === null) {
+      sendJson(response, 400, {
+        error: {
+          code: 'request_invalid',
+        },
+      });
+
+      return;
+    }
+
+    const rawClientId = body['clientId'];
+
+    if (typeof rawClientId !== 'string') {
+      sendJson(response, 400, {
+        error: {
+          code: 'request_invalid',
+        },
+      });
+
+      return;
+    }
+
+    let clientId: ReturnType<typeof ClientId.parse>;
+
+    try {
+      clientId = ClientId.parse(rawClientId);
+    } catch {
+      sendJson(response, 400, {
+        error: {
+          code: 'request_invalid',
+        },
+      });
+
+      return;
+    }
+
+    const rawName = body['name'];
+
+    const rawReference = body['reference'];
+
+    const rawStatus = body['status'];
+
+    if (rawStatus !== undefined && rawStatus !== 'active' && rawStatus !== 'archived') {
+      sendJson(response, 400, {
+        error: {
+          code: 'request_invalid',
+        },
+      });
+
+      return;
+    }
+
+    const update: {
+      name?: string;
+      reference?: string | null;
+      status?: 'active' | 'archived';
+    } = {};
+
+    if (typeof rawName === 'string') {
+      const value = rawName.trim();
+
+      if (value.length < 2 || value.length > 200) {
+        sendJson(response, 400, {
+          error: {
+            code: 'request_invalid',
+          },
+        });
+
+        return;
+      }
+
+      update.name = value;
+    }
+
+    if (rawReference === null) {
+      update.reference = null;
+    } else if (typeof rawReference === 'string') {
+      const value = rawReference.trim();
+
+      update.reference = value.length === 0 ? null : value;
+    }
+
+    if (rawStatus === 'active' || rawStatus === 'archived') {
+      update.status = rawStatus;
+    }
+
+    if (Object.keys(update).length === 0) {
+      sendJson(response, 400, {
+        error: {
+          code: 'request_invalid',
+        },
+      });
+
+      return;
+    }
+
+    const updated = await withContextTransaction(
+      dependencies,
+      context,
+
+      (tx) =>
+        updateClient(
+          {
+            workspaceStore: pgWorkspaceStore,
+          },
+
+          tx,
+          context,
+          clientId,
+          update,
+        ),
+    );
+
+    sendJson(response, 200, {
+      data: updated,
     });
 
     return;
@@ -723,6 +962,12 @@ export async function handleWorkspaceRoute(
 ): Promise<boolean> {
   if (pathname === '/v1/me/organizations') {
     await organizations(dependencies, request, response);
+
+    return true;
+  }
+
+  if (pathname === '/v1/workspace/clients') {
+    await clients(dependencies, request, response);
 
     return true;
   }

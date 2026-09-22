@@ -1,6 +1,49 @@
 import { NextResponse } from 'next/server';
 
-import { activeOrganization, workspaceGet, workspacePost } from '../../../lib/workspace-api';
+import {
+  activeOrganization,
+  workspaceGet,
+  workspacePatch,
+  workspacePost,
+} from '../../../lib/workspace-api';
+
+function sameOrigin(request: Request): boolean {
+  const origin = request.headers.get('origin');
+
+  const host = request.headers.get('host');
+
+  if (origin === null || host === null) {
+    return false;
+  }
+
+  try {
+    return new URL(origin).host === host;
+  } catch {
+    return false;
+  }
+}
+
+function pathFor(resource: string | null): string | null {
+  switch (resource) {
+    case 'clients':
+      return '/v1/workspace/clients';
+
+    case 'matters':
+      return '/v1/workspace/matters';
+
+    case 'documents':
+      return '/v1/workspace/documents';
+
+    case 'workProducts':
+      return '/v1/workspace/work-products';
+
+    case 'approvals':
+      return '/v1/workspace/approvals';
+
+    default:
+      return null;
+  }
+}
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -15,19 +58,9 @@ export async function GET(request: Request) {
     });
   }
 
-  const paths: Record<string, string> = {
-    matters: '/v1/workspace/matters',
+  const path = pathFor(resource);
 
-    documents: '/v1/workspace/documents',
-
-    workProducts: '/v1/workspace/work-products',
-
-    approvals: '/v1/workspace/approvals',
-  };
-
-  const path = resource === null ? undefined : paths[resource];
-
-  if (path === undefined) {
+  if (path === null) {
     return NextResponse.json(
       {
         error: {
@@ -49,11 +82,25 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  if (!sameOrigin(request)) {
+    return NextResponse.json(
+      {
+        error: {
+          code: 'origin_invalid',
+        },
+      },
+
+      {
+        status: 403,
+      },
+    );
+  }
+
   const url = new URL(request.url);
 
   const resource = url.searchParams.get('resource');
 
-  if (resource !== 'matters') {
+  if (resource !== 'clients' && resource !== 'matters') {
     return NextResponse.json(
       {
         error: {
@@ -83,8 +130,82 @@ export async function POST(request: Request) {
     );
   }
 
+  const path = resource === 'clients' ? '/v1/workspace/clients' : '/v1/workspace/matters';
+
   const result = await workspacePost(
-    '/v1/workspace/matters',
+    path,
+
+    body as Record<string, unknown>,
+  );
+
+  return NextResponse.json(
+    result.ok
+      ? {
+          data: result.data,
+        }
+      : {
+          error: {
+            code: result.errorCode ?? 'request_failed',
+          },
+        },
+
+    {
+      status: result.status,
+    },
+  );
+}
+
+export async function PATCH(request: Request) {
+  if (!sameOrigin(request)) {
+    return NextResponse.json(
+      {
+        error: {
+          code: 'origin_invalid',
+        },
+      },
+
+      {
+        status: 403,
+      },
+    );
+  }
+
+  const url = new URL(request.url);
+
+  const resource = url.searchParams.get('resource');
+
+  if (resource !== 'clients') {
+    return NextResponse.json(
+      {
+        error: {
+          code: 'resource_invalid',
+        },
+      },
+
+      {
+        status: 400,
+      },
+    );
+  }
+
+  const body = await request.json().catch(() => null);
+
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    return NextResponse.json(
+      {
+        error: {
+          code: 'request_invalid',
+        },
+      },
+
+      {
+        status: 400,
+      },
+    );
+  }
+
+  const result = await workspacePatch(
+    '/v1/workspace/clients',
 
     body as Record<string, unknown>,
   );

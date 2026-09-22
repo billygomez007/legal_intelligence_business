@@ -1279,3 +1279,61 @@ button {
     margin-top: 18px;
   }
 }
+
+.client-management-layout {
+  display: grid;
+  grid-template-columns:
+    minmax(280px, 0.72fr)
+    minmax(0, 1.5fr);
+  gap: 18px;
+}
+
+.workspace-form {
+  display: grid;
+  gap: 15px;
+}
+
+.workspace-form label {
+  display: grid;
+  gap: 7px;
+}
+
+.workspace-form label > span {
+  color: #8c99a8;
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.workspace-form input,
+.workspace-form select,
+.workspace-form textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 13px;
+  border: 1px solid rgba(145, 162, 181, 0.13);
+  border-radius: 9px;
+  outline: none;
+  background: rgba(6, 12, 19, 0.7);
+  color: #eee9df;
+  font: inherit;
+}
+
+.workspace-form input:focus,
+.workspace-form select:focus,
+.workspace-form textarea:focus {
+  border-color: rgba(210, 174, 95, 0.42);
+}
+
+.compact-button {
+  min-height: 32px;
+  padding: 0 11px;
+  font-size: 9px;
+}
+
+@media (max-width: 900px) {
+  .client-management-layout {
+    grid-template-columns: 1fr;
+  }
+}

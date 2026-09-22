@@ -184,6 +184,74 @@ export async function workspacePost<T>(
   };
 }
 
+export async function workspacePatch<T>(
+  path: string,
+
+  body: Record<string, unknown>,
+): Promise<{
+  readonly ok: boolean;
+
+  readonly status: number;
+
+  readonly data?: T;
+
+  readonly errorCode?: string;
+}> {
+  const organization = await activeOrganization();
+
+  if (organization === null) {
+    return {
+      ok: false,
+
+      status: 409,
+
+      errorCode: 'organization_required',
+    };
+  }
+
+  const response = await requestApi(
+    path,
+
+    {
+      method: 'PATCH',
+
+      headers: {
+        'content-type': 'application/json',
+      },
+
+      body: JSON.stringify(body),
+    },
+
+    organization.id,
+  );
+
+  const payload = (await response.json().catch(() => ({}))) as {
+    readonly data?: T;
+
+    readonly error?: {
+      readonly code?: string;
+    };
+  };
+
+  return {
+    ok: response.ok,
+
+    status: response.status,
+
+    ...(payload.data === undefined
+      ? {}
+      : {
+          data: payload.data,
+        }),
+
+    ...(payload.error?.code === undefined
+      ? {}
+      : {
+          errorCode: payload.error.code,
+        }),
+  };
+}
+
 export async function researchPost(body: Record<string, unknown>) {
   const organization = await activeOrganization();
 
