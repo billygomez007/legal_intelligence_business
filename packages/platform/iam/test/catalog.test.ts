@@ -116,4 +116,36 @@ describe('composeCatalog', () => {
     expect(() => composeCatalog([platformPermissions, testProduct])).not.toThrow();
     expect(catalog.orgRolePermissions.get('admin')?.has('project:read:own')).toBe(false);
   });
+
+  it('accepts existing multi-segment and hyphenated product permission keys', () => {
+    const catalog = composeCatalog([
+      {
+        product: 'permission-key-contract-test',
+        permissions: [
+          {
+            key: 'knowledge:source:create',
+            description: 'Synthetic multi-segment permission.',
+          },
+          {
+            key: 'matter-document:version:read',
+            description: 'Synthetic hyphenated multi-segment permission.',
+          },
+          {
+            key: 'work_product:read',
+            description: 'Synthetic underscored permission.',
+          },
+        ],
+        orgRoleGrants: {
+          owner: ['knowledge:source:create', 'matter-document:version:read', 'work_product:read'],
+          admin: ['knowledge:source:create', 'matter-document:version:read', 'work_product:read'],
+          member: [],
+          viewer: [],
+        },
+      },
+    ]);
+
+    expect(catalog.permissions.has('knowledge:source:create')).toBe(true);
+    expect(catalog.permissions.has('matter-document:version:read')).toBe(true);
+    expect(catalog.permissions.has('work_product:read')).toBe(true);
+  });
 });

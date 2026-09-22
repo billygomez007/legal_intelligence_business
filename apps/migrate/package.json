@@ -19,9 +19,12 @@
     "@legalintel/legal-corpus": "workspace:*",
     "@legalintel/legal-ingestion": "workspace:*",
     "@legalintel/matter-documents": "workspace:*",
-    "@legalintel/workspace": "workspace:*"
+    "@legalintel/work-products": "workspace:*",
+    "@legalintel/workspace": "workspace:*",
+    "@legalintel/legal-retrieval": "workspace:*"
   },
   "devDependencies": {
+    "@legalintel/legal-synthesis": "workspace:*",
     "@types/node": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:"

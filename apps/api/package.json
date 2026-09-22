@@ -1,0 +1,30 @@
+{
+  "name": "@legalintel/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --config vitest.config.mts",
+    "start": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@legalintel/ai-tasks": "workspace:*",
+    "@legalintel/config": "workspace:*",
+    "@legalintel/db": "workspace:*",
+    "@legalintel/iam": "workspace:*",
+    "@legalintel/kernel": "workspace:*",
+    "@legalintel/knowledge": "workspace:*",
+    "@legalintel/legal-synthesis": "workspace:*",
+    "@legalintel/matter-documents": "workspace:*",
+    "@legalintel/work-products": "workspace:*",
+    "@legalintel/workspace": "workspace:*",
+    "google-auth-library": "11.1.0",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

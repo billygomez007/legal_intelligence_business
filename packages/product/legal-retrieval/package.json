@@ -1,0 +1,30 @@
+{
+  "name": "@legalintel/legal-retrieval",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --config vitest.config.mts"
+  },
+  "dependencies": {
+    "@legalintel/ai-tasks": "workspace:*",
+    "@legalintel/audit": "workspace:*",
+    "@legalintel/db": "workspace:*",
+    "@legalintel/entitlements": "workspace:*",
+    "@legalintel/iam": "workspace:*",
+    "@legalintel/knowledge": "workspace:*",
+    "@legalintel/legal-corpus": "workspace:*",
+    "@legalintel/matter-documents": "workspace:*",
+    "@legalintel/work-products": "workspace:*",
+    "@legalintel/workspace": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

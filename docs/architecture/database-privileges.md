@@ -19,8 +19,10 @@ Reviewing a migration? A change to this file is a change to what a role can do.
 | `graph` | USAGE |
 | `iam` | USAGE |
 | `knowledge` | USAGE |
+| `legal_retrieval` | USAGE |
 | `matter_documents` | USAGE |
 | `policy` | USAGE |
+| `work_products` | USAGE |
 | `workspace` | USAGE |
 
 ### table
@@ -45,11 +47,19 @@ Reviewing a migration? A change to this file is a change to what a role can do.
 | `iam.platform_role_assignments` | SELECT |
 | `iam.role_assignments` | DELETE, INSERT, SELECT |
 | `iam.users` | SELECT |
+| `knowledge.passages` | INSERT, SELECT |
 | `knowledge.source_versions` | INSERT, SELECT |
 | `knowledge.sources` | INSERT, SELECT, UPDATE |
+| `legal_retrieval.session_evidence` | INSERT, SELECT |
+| `legal_retrieval.sessions` | INSERT, SELECT |
 | `matter_documents.document_versions` | INSERT, SELECT |
 | `matter_documents.documents` | INSERT, SELECT, UPDATE |
+| `matter_documents.passages` | INSERT, SELECT |
 | `policy.organization_jurisdictions` | SELECT |
+| `work_products.reviews` | INSERT, SELECT |
+| `work_products.revision_provenance` | INSERT, SELECT |
+| `work_products.revisions` | INSERT, SELECT |
+| `work_products.work_products` | INSERT, SELECT, UPDATE |
 | `workspace.clients` | INSERT, SELECT, UPDATE |
 | `workspace.matters` | INSERT, SELECT, UPDATE |
 

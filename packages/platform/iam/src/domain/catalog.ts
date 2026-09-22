@@ -8,7 +8,9 @@ import { ORG_ROLES, type OrgRole } from './roles';
  * contributes its own and says which roles get them. That keeps this package reusable: it
  * knows nothing about cases, corpora or research.
  *
- * Permission strings are `resource:action`. A permission on a resource that has an owner is
+ * Permission strings contain at least two lowercase colon-delimited segments, such as
+ * `matter:read`, `knowledge:source:read` or `matter-document:version:read`.
+ * A permission on a resource that has an owner is
  * `scoped`, and is granted as `resource:action:own` or `resource:action:any`. No wildcards:
  * every grant is spelled out so a review can read exactly what a role can do.
  */
@@ -45,7 +47,7 @@ export interface PermissionCatalog {
   readonly apiKeyEligible: ReadonlySet<string>;
 }
 
-const KEY = /^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*$/;
+const KEY = /^[a-z][a-z0-9_-]*(?::[a-z][a-z0-9_-]*)+$/;
 const STAFF_ROLE = /^[a-z][a-z0-9_]{1,63}$/;
 
 const invalid = (message: string) => internalError('authz.catalog_invalid', message);
@@ -66,7 +68,9 @@ export function composeCatalog(
   for (const contribution of contributions) {
     for (const definition of contribution.permissions) {
       if (!KEY.test(definition.key)) {
-        throw invalid(`Permission key "${definition.key}" must be lowercase resource:action.`);
+        throw invalid(
+          `Permission key "${definition.key}" must contain at least two lowercase colon-delimited segments using letters, digits, underscores or hyphens.`,
+        );
       }
       const existing = permissions.get(definition.key);
       if (existing !== undefined) {

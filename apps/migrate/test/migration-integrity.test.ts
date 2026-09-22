@@ -32,8 +32,13 @@ const FORWARD_MIGRATIONS = [
   'workspace/0001_clients_and_matters.sql',
   'ingestion/0002_review_integrity.sql',
   'knowledge/0001_firm_knowledge.sql',
+  'knowledge/0002_private_passages.sql',
   'matter_documents/0001_matter_documents.sql',
+  'matter_documents/0002_private_passages.sql',
   'ai_tasks/0001_ai_tasks.sql',
+  'work_products/0001_work_products.sql',
+  'work_products/0002_text_constraints.sql',
+  'legal_retrieval/0001_retrieval_sessions.sql',
 ];
 
 async function everyMigration(): Promise<Map<string, MigrationFile>> {
@@ -63,8 +68,13 @@ describe('new migrations are forward migrations', () => {
       'corpus/0004_version_integrity_and_publication_provenance.sql': 4,
       'entitlements/0001_authorized_jurisdictions.sql': 1,
       'workspace/0001_clients_and_matters.sql': 1,
+      'knowledge/0002_private_passages.sql': 2,
       'matter_documents/0001_matter_documents.sql': 1,
+      'matter_documents/0002_private_passages.sql': 2,
       'ai_tasks/0001_ai_tasks.sql': 1,
+      'work_products/0001_work_products.sql': 1,
+      'work_products/0002_text_constraints.sql': 2,
+      'legal_retrieval/0001_retrieval_sessions.sql': 1,
       'ingestion/0002_review_integrity.sql': 2,
     };
     for (const [key, expected] of Object.entries(expectedVersions)) {
@@ -80,12 +90,14 @@ describe('new migrations are forward migrations', () => {
     const all = await everyMigration();
     for (const key of FORWARD_MIGRATIONS) {
       const sql = all.get(key)?.sql ?? '';
-      expect(sql.length, key).toBeGreaterThan(2000);
+      expect(sql.length, key).toBeGreaterThan(
+        key === 'work_products/0002_text_constraints.sql' ? 500 : 2000,
+      );
       expect(sql, key).not.toMatch(/filled in by|todo|placeholder/i);
     }
   });
 
-  it('destroy nothing except the one constraint they replace', async () => {
+  it('replace only the explicitly reviewed integrity constraints', async () => {
     const all = await everyMigration();
     const drops = FORWARD_MIGRATIONS.flatMap((key) => {
       const sql = (all.get(key)?.sql ?? '').replace(/--.*$/gm, '');
@@ -97,6 +109,9 @@ describe('new migrations are forward migrations', () => {
     });
     expect(drops).toEqual([
       'corpus/0004_version_integrity_and_publication_provenance.sql: DROP CONSTRAINT document_versions_supersedes_version_id_fkey',
+      'work_products/0002_text_constraints.sql: DROP CONSTRAINT work_product_revision_content_nonempty',
+      'work_products/0002_text_constraints.sql: DROP CONSTRAINT work_product_provenance_locator_valid',
+      'work_products/0002_text_constraints.sql: DROP CONSTRAINT work_product_review_reason_valid',
     ]);
   });
 });
@@ -112,6 +127,7 @@ describe('a migration set depends only on the sets before it', () => {
     iam: ['audit', 'corpus', 'graph', 'ingestion'],
     audit: ['corpus', 'graph', 'ingestion'],
     corpus: ['ingestion'],
+    work_products: ['ingestion'],
     ingestion: [],
   };
 

@@ -1,0 +1,27 @@
+{
+  "name": "@legalintel/legal-synthesis",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@legalintel/ai-tasks": "workspace:*",
+    "@legalintel/db": "workspace:*",
+    "@legalintel/iam": "workspace:*",
+    "@legalintel/knowledge": "workspace:*",
+    "@legalintel/legal-retrieval": "workspace:*",
+    "@legalintel/matter-documents": "workspace:*",
+    "@legalintel/work-products": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
